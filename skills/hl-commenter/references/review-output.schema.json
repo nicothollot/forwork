@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hl-intelligence.local/schemas/review-output.schema.json",
+  "title": "HL Commenter result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "source_sha256", "findings"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "request_id": { "type": "string", "minLength": 8 },
+    "source_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "findings": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "anchor", "comment_body"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 40 },
+          "anchor": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "pdf_block",
+                  "pdf_page",
+                  "docx_paragraph",
+                  "docx_table_cell",
+                  "xlsx_cell",
+                  "xlsx_range",
+                  "pptx_shape",
+                  "pptx_slide"
+                ]
+              },
+              "page": { "type": "integer", "minimum": 1 },
+              "block_id": { "type": "string", "minLength": 1 },
+              "paragraph_id": { "type": "string", "minLength": 1 },
+              "sheet": { "type": "string", "minLength": 1 },
+              "cell": { "type": "string", "minLength": 1 },
+              "range": { "type": "string", "minLength": 1 },
+              "slide": { "type": "integer", "minimum": 1 },
+              "shape_id": { "type": "string", "minLength": 1 }
+            }
+          },
+          "evidence": { "type": "string", "maxLength": 2000 },
+          "value": {
+            "anyOf": [
+              { "type": "string", "maxLength": 240 },
+              { "type": "null" }
+            ]
+          },
+          "comment_body": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "suggested_replacement": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ]
+          },
+          "category": {
+            "anyOf": [
+              { "type": "string", "maxLength": 80 },
+              { "type": "null" }
+            ]
+          },
+          "severity": {
+            "anyOf": [
+              { "enum": ["low", "medium", "high"] },
+              { "type": "null" }
+            ]
+          },
+          "confidence": {
+            "anyOf": [
+              { "type": "number", "minimum": 0, "maximum": 1 },
+              { "type": "null" }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

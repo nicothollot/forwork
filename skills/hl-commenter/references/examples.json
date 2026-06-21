@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "examples": [
+    {
+      "review_goal": "Numbers and consistency",
+      "finding": {
+        "id": "C001",
+        "anchor": {
+          "kind": "pdf_block",
+          "page": 12,
+          "block_id": "p0012:b0007"
+        },
+        "evidence": "Revenue increased by 14.2%",
+        "value": "14.2%",
+        "comment_body": "Please confirm this percentage against the summary table.",
+        "suggested_replacement": null,
+        "category": "numbers",
+        "severity": "medium",
+        "confidence": 0.93
+      }
+    }
+  ]
+}

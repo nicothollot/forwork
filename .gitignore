@@ -1,0 +1,15 @@
+node_modules/
+package-lock.json
+dist/
+release/
+.vite/
+coverage/
+*.log
+*.tmp
+*.hlreview.tmp
+HL-Commenter-Skill.zip
+*_HL_Review/
+Preflight_Output/
+.DS_Store
+Thumbs.db
+*:Zone.Identifier

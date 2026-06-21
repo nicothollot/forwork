@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="HL Intelligence app icon">
+  <defs>
+    <linearGradient id="edge" x1="140" y1="116" x2="884" y2="900" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#508BC9"/>
+      <stop offset="1" stop-color="#0067A5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="176" fill="#002855"/>
+  <path d="M132 266V172h760v680H132V266Z" fill="none" stroke="url(#edge)" stroke-width="28" opacity="0.95"/>
+  <path d="M764 214h82v82M260 810h-82v-82" fill="none" stroke="#7E8597" stroke-width="18" stroke-linecap="square" opacity="0.52"/>
+  <g opacity="0.18" stroke="#FFFFFF" stroke-width="5">
+    <path d="M184 358h656M184 512h656M184 666h656"/>
+    <path d="M338 204v616M512 204v616M686 204v616"/>
+  </g>
+  <text x="512" y="594"
+    text-anchor="middle"
+    font-family="Segoe UI, Arial, Helvetica, sans-serif"
+    font-size="310"
+    font-weight="700"
+    letter-spacing="0"
+    fill="#FFFFFF">HL</text>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M706 384L760 330H838" stroke="#508BC9" stroke-width="22"/>
+    <path d="M708 512H832" stroke="#508BC9" stroke-width="22"/>
+    <path d="M706 640L760 694H838" stroke="#508BC9" stroke-width="22"/>
+  </g>
+  <g fill="#FFFFFF" stroke="#508BC9" stroke-width="13">
+    <circle cx="706" cy="384" r="19"/>
+    <circle cx="838" cy="330" r="19"/>
+    <circle cx="832" cy="512" r="19"/>
+    <circle cx="706" cy="640" r="19"/>
+    <circle cx="838" cy="694" r="19"/>
+  </g>
+</svg>

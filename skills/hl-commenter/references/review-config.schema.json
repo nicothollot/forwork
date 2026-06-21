@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hl-intelligence.local/schemas/review-config.schema.json",
+  "title": "HL Intelligence review-config.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "request_id",
+    "source",
+    "review_instructions",
+    "style",
+    "required_output_filename"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "request_id": { "type": "string", "minLength": 8 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["filename", "sha256", "document_type"],
+      "properties": {
+        "filename": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "document_type": { "enum": ["pdf", "docx", "xlsx", "pptx"] },
+        "total_pages": { "type": "integer", "minimum": 1 },
+        "total_slides": { "type": "integer", "minimum": 1 },
+        "total_sheets": { "type": "integer", "minimum": 1 },
+        "total_sections": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "review_instructions": { "type": "string", "maxLength": 12000 },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wording_mode",
+        "signals",
+        "formality",
+        "max_words",
+        "format_template",
+        "examples"
+      ],
+      "properties": {
+        "wording_mode": { "enum": ["automatic", "guided"] },
+        "signals": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "concise",
+              "neutral",
+              "formal",
+              "question-led",
+              "action-oriented",
+              "evidence-first"
+            ]
+          },
+          "uniqueItems": true,
+          "maxItems": 6
+        },
+        "formality": { "enum": ["automatic", "professional", "formal"] },
+        "max_words": {
+          "anyOf": [
+            { "type": "integer", "minimum": 10, "maximum": 120 },
+            { "type": "null" }
+          ]
+        },
+        "format_template": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "examples": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "maxItems": 20
+        }
+      }
+    },
+    "required_output_filename": { "const": "hl_comments.json" }
+  }
+}

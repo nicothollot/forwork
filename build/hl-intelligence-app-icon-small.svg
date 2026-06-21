@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="HL Intelligence compact app icon">
+  <rect width="1024" height="1024" rx="176" fill="#002855"/>
+  <rect x="118" y="118" width="788" height="788" rx="92" fill="none" stroke="#508BC9" stroke-width="56"/>
+  <text x="510" y="626"
+    text-anchor="middle"
+    font-family="Segoe UI, Arial, Helvetica, sans-serif"
+    font-size="380"
+    font-weight="700"
+    letter-spacing="0"
+    fill="#FFFFFF">HL</text>
+  <g fill="#508BC9">
+    <circle cx="760" cy="338" r="42"/>
+    <circle cx="804" cy="512" r="42"/>
+    <circle cx="760" cy="686" r="42"/>
+  </g>
+</svg>

@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="430" height="270" viewBox="0 0 430 270" role="img" aria-label="HL Intelligence loading">
+  <rect width="430" height="270" fill="#F6F8FB"/>
+  <rect x="0.5" y="0.5" width="429" height="269" fill="#FFFFFF" stroke="#D7DCE5"/>
+  <g fill="none" stroke="#EDF2F7" stroke-width="1">
+    <path d="M34 0V270"/>
+    <path d="M68 0V270"/>
+    <path d="M102 0V270"/>
+    <path d="M136 0V270"/>
+    <path d="M170 0V270"/>
+    <path d="M204 0V270"/>
+    <path d="M238 0V270"/>
+    <path d="M272 0V270"/>
+    <path d="M306 0V270"/>
+    <path d="M340 0V270"/>
+    <path d="M374 0V270"/>
+    <path d="M408 0V270"/>
+    <path d="M0 34H430"/>
+    <path d="M0 68H430"/>
+    <path d="M0 102H430"/>
+    <path d="M0 136H430"/>
+    <path d="M0 170H430"/>
+    <path d="M0 204H430"/>
+    <path d="M0 238H430"/>
+  </g>
+  <rect x="22.5" y="22.5" width="385" height="225" fill="none" stroke="#BDD5EA" stroke-width="1"/>
+  <rect x="36.5" y="36.5" width="357" height="197" fill="none" stroke="#CAD2DD" stroke-width="1"/>
+  <g transform="translate(166 46) scale(0.096)">
+    
+  <defs>
+    <linearGradient id="edge" x1="140" y1="116" x2="884" y2="900" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#508BC9"/>
+      <stop offset="1" stop-color="#0067A5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="176" fill="#002855"/>
+  <path d="M132 266V172h760v680H132V266Z" fill="none" stroke="url(#edge)" stroke-width="28" opacity="0.95"/>
+  <path d="M764 214h82v82M260 810h-82v-82" fill="none" stroke="#7E8597" stroke-width="18" stroke-linecap="square" opacity="0.52"/>
+  <g opacity="0.18" stroke="#FFFFFF" stroke-width="5">
+    <path d="M184 358h656M184 512h656M184 666h656"/>
+    <path d="M338 204v616M512 204v616M686 204v616"/>
+  </g>
+  <text x="512" y="594"
+    text-anchor="middle"
+    font-family="Segoe UI, Arial, Helvetica, sans-serif"
+    font-size="310"
+    font-weight="700"
+    letter-spacing="0"
+    fill="#FFFFFF">HL</text>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M706 384L760 330H838" stroke="#508BC9" stroke-width="22"/>
+    <path d="M708 512H832" stroke="#508BC9" stroke-width="22"/>
+    <path d="M706 640L760 694H838" stroke="#508BC9" stroke-width="22"/>
+  </g>
+  <g fill="#FFFFFF" stroke="#508BC9" stroke-width="13">
+    <circle cx="706" cy="384" r="19"/>
+    <circle cx="838" cy="330" r="19"/>
+    <circle cx="832" cy="512" r="19"/>
+    <circle cx="706" cy="640" r="19"/>
+    <circle cx="838" cy="694" r="19"/>
+  </g>
+
+  </g>
+  <text x="215" y="176"
+    text-anchor="middle"
+    font-family="Segoe UI, Arial, Helvetica, sans-serif"
+    font-size="19"
+    font-weight="700"
+    letter-spacing="0"
+    fill="#002855">HL Intelligence</text>
+  <text x="215" y="218"
+    text-anchor="middle"
+    font-family="Segoe UI, Arial, Helvetica, sans-serif"
+    font-size="13"
+    font-weight="500"
+    letter-spacing="0"
+    fill="#525766">Interface is loading</text>
+  <rect x="104" y="235" width="222" height="3" fill="#E6EBF2"/>
+  <rect x="104" y="235" width="96" height="3" fill="#0067A5"/>
+</svg>
