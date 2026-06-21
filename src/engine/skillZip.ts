@@ -4,8 +4,10 @@ import JSZip from "jszip";
 import type { SkillBuildResult } from "../shared/types.js";
 import { writeFileAtomic } from "./fileSafety.js";
 
-export async function buildSkillZip(projectRoot = process.cwd()): Promise<SkillBuildResult> {
-  const sourceRoot = path.join(projectRoot, "skills", "hl-commenter");
+export async function buildSkillZip(
+  projectRoot = process.cwd(),
+  sourceRoot = path.join(projectRoot, "skills", "hl-commenter")
+): Promise<SkillBuildResult> {
   const zip = new JSZip();
   await addDirectory(zip, sourceRoot, "hl-commenter");
   const zipPath = path.join(projectRoot, "HL-Commenter-Skill.zip");

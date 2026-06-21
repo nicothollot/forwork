@@ -256,5 +256,6 @@ export interface AppApi {
   readTextFile(path: string): Promise<string>;
   getSettings(): Promise<AppSettings>;
   saveSettings(settings: AppSettings): Promise<void>;
+  notifyInitialUiReady(): void;
   onProgress(callback: (event: ProgressEvent) => void): () => void;
 }

@@ -8,3 +8,9 @@ createRoot(document.getElementById("root") as HTMLElement).render(
     <App />
   </React.StrictMode>
 );
+
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    window.hl.notifyInitialUiReady();
+  });
+});

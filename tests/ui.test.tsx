@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/renderer/App";
 import type { AppApi } from "../src/shared/types";
@@ -24,6 +24,7 @@ describe("application shell", () => {
       readTextFile: vi.fn(),
       getSettings: vi.fn().mockResolvedValue({}),
       saveSettings: vi.fn(),
+      notifyInitialUiReady: vi.fn(),
       onProgress: vi.fn().mockReturnValue(() => undefined)
     } as unknown as AppApi;
   });
@@ -33,5 +34,30 @@ describe("application shell", () => {
     expect(screen.getByText("Processed locally. No documents are uploaded by HL Intelligence.")).toBeTruthy();
     const tabs = within(screen.getByLabelText("Primary")).getAllByRole("button");
     expect(tabs).toHaveLength(2);
+  });
+
+  it("routes Commenter file, folder, and JSON browse controls through the preload API", async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /browse document or drop a pdf/i }));
+    expect(window.hl.selectDocument).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /^browse$/i })[0]);
+    expect(window.hl.selectFolder).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /create commented file/i }));
+    fireEvent.click(screen.getByRole("button", { name: /browse for hl_comments\.json/i }));
+    expect(window.hl.selectJsonFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes LLM Preflight file and folder browse controls through the preload API", async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /llm preflight/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^browse files$/i }));
+    expect(window.hl.selectDocuments).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /^browse$/i })[0]);
+    expect(window.hl.selectFolder).toHaveBeenCalledTimes(1);
   });
 });

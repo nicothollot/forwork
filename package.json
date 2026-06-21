@@ -2,29 +2,29 @@
   "name": "hl-intelligence",
   "version": "0.1.0",
   "private": true,
-  "description": "Local deterministic document processing for HL review workflows.",
+  "description": "HL Intelligence",
   "productName": "HL Intelligence",
   "main": "dist/main/main.js",
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "build": "tsc -p tsconfig.node.json && node scripts/copy-static.mjs && vite build",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.node.json --noEmit && node scripts/copy-static.mjs && node scripts/build-main.mjs && vite build",
     "test": "vitest run",
     "smoke": "npm run build && npm run test && npm run skill:build",
     "skill:build": "node scripts/build-skill.mjs",
     "assets:windows": "node scripts/generate-windows-assets.mjs",
-    "package:win": "node scripts/package-win.mjs"
+    "package:win": "node scripts/package-win.mjs",
+    "package:win:check-size": "node scripts/check-windows-package-size.mjs"
   },
-  "dependencies": {
+  "dependencies": {},
+  "devDependencies": {
     "ajv": "^8.20.0",
     "jszip": "^3.10.1",
     "lucide-react": "^1.21.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.0.227",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
-  },
-  "devDependencies": {
+    "react-dom": "^19.2.7",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^26.0.0",
     "@types/react": "^19.2.17",
@@ -38,39 +38,63 @@
     "vitest": "^4.1.9"
   },
   "build": {
-    "appId": "com.houlihanlokey.hl-intelligence",
+    "appId": "com.houlihanlokey.hlintelligence",
     "productName": "HL Intelligence",
+    "artifactName": "HL Intelligence.exe",
+    "asar": true,
+    "compression": "maximum",
+    "electronLanguages": [
+      "en-US"
+    ],
     "directories": {
       "output": "release",
       "buildResources": "build"
     },
     "files": [
-      "dist/**",
-      "public/**",
-      "skills/**",
-      "package.json"
+      "dist/main/**",
+      "dist/preload/**",
+      "dist/renderer/**",
+      "dist/schemas/**",
+      "package.json",
+      "!node_modules/**",
+      "!**/*.map",
+      "!**/*.ts",
+      "!**/*.tsx",
+      "!**/*.md"
     ],
     "extraResources": [
       {
-        "from": "skills",
-        "to": "skills"
-      },
-      {
-        "from": "public/brand",
-        "to": "brand"
+        "from": "skills/hl-commenter",
+        "to": "skills/hl-commenter",
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "build/hl-intelligence.ico",
         "to": "hl-intelligence.ico"
-      },
-      {
-        "from": "build/hl-intelligence-icon-256.png",
-        "to": "hl-intelligence-icon-256.png"
       }
     ],
     "win": {
-      "target": "dir",
-      "icon": "build/hl-intelligence.ico"
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/hl-intelligence.ico",
+      "signAndEditExecutable": true,
+      "signExecutable": false
+    },
+    "nsis": {
+      "installerIcon": "build/hl-intelligence.ico"
+    },
+    "portable": {
+      "artifactName": "HL Intelligence.exe",
+      "splashImage": "build/portable-splash.bmp",
+      "useZip": false
     }
   }
 }

@@ -1,31 +1,56 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AppSettings, PreflightGenerateInput, ProgressEvent } from "../shared/types.js";
-import { createCommentedPdf } from "../engine/pdfComments.js";
-import { getFileMetadata } from "../engine/metadata.js";
-import { generatePreflightFiles } from "../engine/preflight.js";
-import { prepareReviewPackage } from "../engine/reviewPackage.js";
-import { validateClaudeResultText } from "../engine/resultValidation.js";
-import { readJsonFile } from "../engine/fileSafety.js";
-import { buildSkillZip } from "../engine/skillZip.js";
-import { readSettings, saveSettings } from "../engine/settings.js";
 import type { LocalReviewJob } from "../shared/types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const APP_USER_MODEL_ID = "com.houlihanlokey.hlintelligence";
+const SPLASH_WIDTH = 430;
+const SPLASH_HEIGHT = 270;
+const MIN_SPLASH_VISIBLE_MS = 650;
+const RENDERER_READY_TIMEOUT_MS = 8000;
+
 const cancelledJobs = new Set<string>();
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
+let splashShownAt = 0;
+let mainWindowReadyToShow = false;
+let rendererInitialUiReady = false;
+let rendererReadyTimedOut = false;
+let mainWindowShowQueued = false;
+let rendererReadyTimer: NodeJS.Timeout | null = null;
 
+app.setName("HL Intelligence");
 if (process.platform === "win32") {
-  app.setAppUserModelId("com.houlihanlokey.hl-intelligence");
+  app.setAppUserModelId(APP_USER_MODEL_ID);
 }
+
+app.whenReady().then(async () => {
+  createStartupSplashWindow();
+  registerIpc();
+  await createWindow();
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) void createWindow();
+  });
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
 
 async function createWindow(): Promise<void> {
   if (!splashWindow) createStartupSplashWindow();
 
-  mainWindow = new BrowserWindow({
+  clearRendererReadyTimer();
+  mainWindowReadyToShow = false;
+  rendererInitialUiReady = false;
+  rendererReadyTimedOut = false;
+  mainWindowShowQueued = false;
+
+  const window = new BrowserWindow({
     width: 1280,
     height: 840,
     minWidth: 1040,
@@ -43,52 +68,70 @@ async function createWindow(): Promise<void> {
     }
   });
 
-  mainWindow.once("ready-to-show", () => {
-    mainWindow?.show();
-    closeStartupSplash();
+  mainWindow = window;
+
+  window.once("ready-to-show", () => {
+    if (mainWindow !== window) return;
+    mainWindowReadyToShow = true;
+    maybeShowMainWindow();
   });
 
-  mainWindow.once("closed", () => {
-    mainWindow = null;
+  window.once("closed", () => {
+    if (mainWindow === window) mainWindow = null;
+    clearRendererReadyTimer();
   });
+
+  rendererReadyTimer = setTimeout(() => {
+    rendererReadyTimedOut = true;
+    maybeShowMainWindow();
+  }, RENDERER_READY_TIMEOUT_MS);
 
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
   try {
     if (devServerUrl) {
-      await mainWindow.loadURL(devServerUrl);
+      await window.loadURL(devServerUrl);
     } else {
-      await mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
+      await window.loadFile(path.join(__dirname, "../renderer/index.html"));
     }
   } catch (error) {
-    closeStartupSplash();
-    mainWindow?.show();
+    clearRendererReadyTimer();
+    closeStartupSplash(false);
+    if (!window.isDestroyed()) window.show();
     throw error;
   }
 }
 
-app.whenReady().then(async () => {
-  createStartupSplashWindow();
-  registerIpc();
-  await createWindow();
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) void createWindow();
-  });
-});
+function maybeShowMainWindow(): void {
+  const window = mainWindow;
+  if (!window || window.isDestroyed() || window.isVisible() || mainWindowShowQueued) return;
+  if (!mainWindowReadyToShow || (!rendererInitialUiReady && !rendererReadyTimedOut)) return;
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
+  mainWindowShowQueued = true;
+  const visibleSince = splashShownAt || Date.now();
+  const remainingSplashMs = Math.max(0, MIN_SPLASH_VISIBLE_MS - (Date.now() - visibleSince));
+
+  setTimeout(() => {
+    if (!window.isDestroyed()) {
+      window.show();
+      window.focus();
+    }
+    closeStartupSplash(true);
+    mainWindowShowQueued = false;
+    clearRendererReadyTimer();
+  }, remainingSplashMs);
+}
 
 function createStartupSplashWindow(): BrowserWindow {
-  closeStartupSplash();
+  closeStartupSplash(false);
+  splashShownAt = 0;
 
   const window = new BrowserWindow({
-    width: 430,
-    height: 270,
+    width: SPLASH_WIDTH,
+    height: SPLASH_HEIGHT,
     frame: false,
     resizable: false,
     movable: true,
-    show: true,
+    show: false,
     skipTaskbar: true,
     alwaysOnTop: true,
     center: true,
@@ -99,6 +142,13 @@ function createStartupSplashWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true
+    }
+  });
+
+  window.webContents.once("did-finish-load", () => {
+    if (!window.isDestroyed()) {
+      splashShownAt = Date.now();
+      window.show();
     }
   });
 
@@ -114,18 +164,40 @@ function createStartupSplashWindow(): BrowserWindow {
   return window;
 }
 
-function closeStartupSplash(): void {
+function closeStartupSplash(animated: boolean): void {
   const window = splashWindow;
   splashWindow = null;
-  if (window && !window.isDestroyed()) {
+  if (!window || window.isDestroyed()) return;
+
+  if (!animated) {
     window.close();
+    return;
+  }
+
+  void window.webContents.executeJavaScript("document.body.classList.add('is-exiting')").catch(() => undefined);
+  setTimeout(() => {
+    if (!window.isDestroyed()) window.close();
+  }, 180);
+}
+
+function clearRendererReadyTimer(): void {
+  if (rendererReadyTimer) {
+    clearTimeout(rendererReadyTimer);
+    rendererReadyTimer = null;
   }
 }
 
 function appIconPath(): string {
+  const candidates = app.isPackaged
+    ? [path.join(process.resourcesPath, "hl-intelligence.ico")]
+    : [path.join(process.cwd(), "build", "hl-intelligence.ico"), path.join(process.cwd(), "build", "icon.ico")];
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+}
+
+function skillSourceRoot(): string {
   return app.isPackaged
-    ? path.join(process.resourcesPath, "hl-intelligence.ico")
-    : path.join(process.cwd(), "build", "hl-intelligence.ico");
+    ? path.join(process.resourcesPath, "skills", "hl-commenter")
+    : path.join(process.cwd(), "skills", "hl-commenter");
 }
 
 function splashHtml(): string {
@@ -133,7 +205,7 @@ function splashHtml(): string {
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=${SPLASH_WIDTH}, initial-scale=1" />
     <style>
       :root {
         --hl-oxford: #002855;
@@ -141,160 +213,162 @@ function splashHtml(): string {
         --hl-sky: #508bc9;
         --hl-roman: #7e8597;
         --line: #d7dce5;
-        font-family: "Usual", "Segoe UI", Arial, sans-serif;
+        --soft-line: #e3e8ef;
+        --status: #525766;
+        font-family: "Segoe UI", Arial, Helvetica, sans-serif;
         color: #1f2530;
       }
       * { box-sizing: border-box; }
+      html,
       body {
+        width: ${SPLASH_WIDTH}px;
+        height: ${SPLASH_HEIGHT}px;
         margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
+        overflow: hidden;
         background: #f6f8fb;
       }
-      .splash {
-        width: 100%;
-        height: 100vh;
-        padding: 30px 38px 28px;
-        border: 1px solid var(--line);
-        display: grid;
-        grid-template-rows: 1fr auto;
-        gap: 20px;
-        background:
-          linear-gradient(90deg, rgba(0,40,85,0.06) 1px, transparent 1px),
-          linear-gradient(180deg, rgba(0,40,85,0.05) 1px, transparent 1px),
-          #ffffff;
-        background-size: 34px 34px;
-        animation: splash-in 240ms cubic-bezier(.2,.8,.2,1) both;
-        overflow: hidden;
-        position: relative;
+      body.is-exiting .splash {
+        opacity: 0;
+        transform: scale(.992);
+        transition: opacity 170ms ease, transform 170ms ease;
       }
-      .splash::before {
+      .splash {
+        position: relative;
+        width: ${SPLASH_WIDTH}px;
+        height: ${SPLASH_HEIGHT}px;
+        border: 1px solid var(--line);
+        background: #ffffff;
+      }
+      .splash::before,
+      .splash::after {
         content: "";
         position: absolute;
-        inset: 20px;
-        border: 1px solid rgba(0, 103, 165, 0.16);
         pointer-events: none;
       }
-      .logo-stage {
-        align-self: center;
-        justify-self: center;
-        display: grid;
-        place-items: center;
-        gap: 14px;
-        margin-top: 8px;
-        animation: logo-in 360ms cubic-bezier(.2,.8,.2,1) 80ms both;
+      .splash::before {
+        inset: 22px;
+        border: 1px solid var(--soft-line);
       }
-      .icon-shell {
-        width: 104px;
-        height: 104px;
-        display: grid;
-        place-items: center;
-        border: 1px solid rgba(80, 139, 201, 0.34);
-        background: rgba(255, 255, 255, 0.78);
-        box-shadow: 0 18px 40px rgba(0, 40, 85, 0.16);
+      .splash::after {
+        inset: 36px;
+        border: 1px solid #f1f4f8;
       }
-      img {
-        width: 82px;
-        height: 82px;
+      .brand-logo {
+        position: absolute;
+        left: 118px;
+        top: 42px;
+        width: 194px;
+        height: auto;
         display: block;
+        animation: logo-settle 420ms cubic-bezier(.2,.8,.2,1) both;
       }
       .fallback-logo {
+        position: absolute;
+        left: 0;
+        top: 54px;
+        width: 100%;
+        text-align: center;
         color: var(--hl-oxford);
-        font-size: 26px;
-        font-weight: 750;
+        font-size: 17px;
+        font-weight: 700;
       }
       h1 {
+        position: absolute;
+        top: 128px;
+        left: 0;
+        width: 100%;
         margin: 0;
         color: var(--hl-oxford);
         font-size: 19px;
         line-height: 1.2;
         font-weight: 700;
         letter-spacing: 0;
-      }
-      .splash-status {
-        display: grid;
-        place-items: center;
-        gap: 12px;
+        text-align: center;
       }
       p {
+        position: absolute;
+        top: 158px;
+        left: 0;
+        width: 100%;
         margin: 0;
-        color: #525766;
+        color: var(--status);
         font-size: 13px;
         line-height: 1.45;
         text-align: center;
         letter-spacing: 0;
       }
       .loader {
-        width: 100%;
+        position: absolute;
+        left: 104px;
+        top: 232px;
+        width: 222px;
         height: 3px;
         background: #e6ebf2;
         overflow: hidden;
       }
       .loader span {
         display: block;
-        width: 38%;
+        width: 96px;
         height: 100%;
-        background: linear-gradient(90deg, var(--hl-sapphire), var(--hl-sky));
-        animation: load 1.05s ease-in-out infinite;
+        background: var(--hl-sapphire);
+        transform: translateX(0);
+        animation: load 1.2s ease-in-out 320ms infinite;
       }
       @keyframes load {
-        0% { transform: translateX(-105%); }
-        100% { transform: translateX(270%); }
+        0% { transform: translateX(0); opacity: 1; }
+        70% { transform: translateX(126px); opacity: .82; }
+        100% { transform: translateX(222px); opacity: .52; }
       }
-      @keyframes splash-in {
-        from { opacity: 0; transform: translateY(8px) scale(.985); }
-        to { opacity: 1; transform: scale(1); }
+      @keyframes logo-settle {
+        from { opacity: .96; transform: translateY(1px); }
+        to { opacity: 1; transform: translateY(0); }
       }
-      @keyframes logo-in {
-        from { opacity: 0; transform: translateY(7px) scale(.965); }
-        to { opacity: 1; transform: translateY(0) scale(1); }
+      @media (prefers-reduced-motion: reduce) {
+        .brand-logo,
+        .loader span {
+          animation: none;
+        }
       }
     </style>
   </head>
   <body>
     <section class="splash" aria-label="HL Intelligence is loading">
-      <div class="logo-stage">
-        <div class="icon-shell">
-          ${splashIconSvg()}
-        </div>
-        <h1>HL Intelligence</h1>
-      </div>
-      <div class="splash-status">
-        <p>Interface is loading</p>
-        <div class="loader" role="progressbar" aria-label="Loading"><span></span></div>
-      </div>
+      ${splashLogoMarkup()}
+      <h1>HL Intelligence</h1>
+      <p>Secure document preparation</p>
+      <div class="loader" role="progressbar" aria-label="Loading"><span></span></div>
     </section>
   </body>
 </html>`;
 }
 
-function splashIconSvg(): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="82" height="82" viewBox="0 0 1024 1024" role="img" aria-label="HL Intelligence">
-    <rect width="1024" height="1024" rx="176" fill="#002855"/>
-    <path d="M132 266V172h760v680H132V266Z" fill="none" stroke="#508BC9" stroke-width="28" opacity="0.95"/>
-    <path d="M764 214h82v82M260 810h-82v-82" fill="none" stroke="#7E8597" stroke-width="18" stroke-linecap="square" opacity="0.52"/>
-    <g opacity="0.18" stroke="#FFFFFF" stroke-width="5">
-      <path d="M184 358h656M184 512h656M184 666h656"/>
-      <path d="M338 204v616M512 204v616M686 204v616"/>
-    </g>
-    <text x="512" y="594" text-anchor="middle" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="310" font-weight="700" letter-spacing="0" fill="#FFFFFF">HL</text>
-    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M706 384L760 330H838" stroke="#508BC9" stroke-width="22"/>
-      <path d="M708 512H832" stroke="#508BC9" stroke-width="22"/>
-      <path d="M706 640L760 694H838" stroke="#508BC9" stroke-width="22"/>
-    </g>
-    <g fill="#FFFFFF" stroke="#508BC9" stroke-width="13">
-      <circle cx="706" cy="384" r="19"/>
-      <circle cx="838" cy="330" r="19"/>
-      <circle cx="832" cy="512" r="19"/>
-      <circle cx="706" cy="640" r="19"/>
-      <circle cx="838" cy="694" r="19"/>
-    </g>
-  </svg>`;
+function splashLogoMarkup(): string {
+  const candidates = app.isPackaged
+    ? [path.join(process.resourcesPath, "app.asar", "dist", "renderer", "brand", "hl-logo-horizontal.svg")]
+    : [
+        path.join(process.cwd(), "public", "brand", "hl-logo-horizontal.svg"),
+        path.join(__dirname, "../renderer/brand/hl-logo-horizontal.svg")
+      ];
+
+  for (const candidate of candidates) {
+    try {
+      const svg = readFileSync(candidate);
+      return `<img class="brand-logo" alt="Houlihan Lokey" src="data:image/svg+xml;base64,${svg.toString("base64")}" />`;
+    } catch {
+      // Try the next bundled logo location.
+    }
+  }
+
+  return `<div class="fallback-logo">Houlihan Lokey</div>`;
 }
 
 function registerIpc(): void {
+  ipcMain.on("renderer:initial-ui-ready", (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return;
+    rendererInitialUiReady = true;
+    maybeShowMainWindow();
+  });
+
   ipcMain.handle("dialog:selectDocument", async () => {
     const result = await dialog.showOpenDialog({
       title: "Browse document",
@@ -305,6 +379,7 @@ function registerIpc(): void {
       ]
     });
     if (result.canceled || result.filePaths.length === 0) return null;
+    const { getFileMetadata } = await import("../engine/metadata.js");
     return getFileMetadata(result.filePaths[0], true);
   });
 
@@ -318,6 +393,7 @@ function registerIpc(): void {
       ]
     });
     if (result.canceled) return [];
+    const { getFileMetadata } = await import("../engine/metadata.js");
     return Promise.all(result.filePaths.map((filePath) => getFileMetadata(filePath, false)));
   });
 
@@ -341,15 +417,32 @@ function registerIpc(): void {
     return result.filePaths[0];
   });
 
-  ipcMain.handle("file:getMetadata", async (_event, filePath: string) => getFileMetadata(filePath, true));
-  ipcMain.handle("review:prepare", async (_event, input) => prepareReviewPackage(input));
+  ipcMain.handle("file:getMetadata", async (_event, filePath: string) => {
+    const { getFileMetadata } = await import("../engine/metadata.js");
+    return getFileMetadata(filePath, true);
+  });
+
+  ipcMain.handle("review:prepare", async (_event, input) => {
+    const { prepareReviewPackage } = await import("../engine/reviewPackage.js");
+    return prepareReviewPackage(input);
+  });
+
   ipcMain.handle("review:validateClaude", async (_event, input: { localJobPath: string; jsonText: string }) => {
+    const [{ readJsonFile }, { validateClaudeResultText }] = await Promise.all([
+      import("../engine/fileSafety.js"),
+      import("../engine/resultValidation.js")
+    ]);
     const localJob = await readJsonFile<LocalReviewJob>(input.localJobPath);
     return validateClaudeResultText(localJob, input.jsonText);
   });
-  ipcMain.handle("review:createCommentedPdf", async (_event, input) => createCommentedPdf(input));
+
+  ipcMain.handle("review:createCommentedPdf", async (_event, input) => {
+    const { createCommentedPdf } = await import("../engine/pdfComments.js");
+    return createCommentedPdf(input);
+  });
 
   ipcMain.handle("preflight:generate", async (event, input: PreflightGenerateInput) => {
+    const { generatePreflightFiles } = await import("../engine/preflight.js");
     cancelledJobs.delete(input.jobId);
     const sender = event.sender;
     return generatePreflightFiles(
@@ -363,7 +456,11 @@ function registerIpc(): void {
     cancelledJobs.add(jobId);
   });
 
-  ipcMain.handle("skill:buildZip", async () => buildSkillZip());
+  ipcMain.handle("skill:buildZip", async () => {
+    const { buildSkillZip } = await import("../engine/skillZip.js");
+    return buildSkillZip(process.cwd(), skillSourceRoot());
+  });
+
   ipcMain.handle("shell:openPath", async (_event, targetPath: string) => {
     await shell.openPath(targetPath);
   });
@@ -371,6 +468,12 @@ function registerIpc(): void {
     clipboard.writeText(text);
   });
   ipcMain.handle("file:readText", async (_event, filePath: string) => readFile(filePath, "utf8"));
-  ipcMain.handle("settings:get", async (): Promise<AppSettings> => readSettings(app.getPath("userData")));
-  ipcMain.handle("settings:save", async (_event, settings: AppSettings) => saveSettings(app.getPath("userData"), settings));
+  ipcMain.handle("settings:get", async (): Promise<AppSettings> => {
+    const { readSettings } = await import("../engine/settings.js");
+    return readSettings(app.getPath("userData"));
+  });
+  ipcMain.handle("settings:save", async (_event, settings: AppSettings) => {
+    const { saveSettings } = await import("../engine/settings.js");
+    return saveSettings(app.getPath("userData"), settings);
+  });
 }

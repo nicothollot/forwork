@@ -11,7 +11,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "declaration": false,
-    "sourceMap": true,
+    "sourceMap": false,
     "types": ["node", "electron"]
   },
   "include": ["src/main", "src/preload", "src/engine", "src/shared", "src/schemas"]

@@ -27,6 +27,7 @@ const api: AppApi = {
   readTextFile: (path: string) => ipcRenderer.invoke("file:readText", path),
   getSettings: () => ipcRenderer.invoke("settings:get"),
   saveSettings: (settings: AppSettings) => ipcRenderer.invoke("settings:save", settings),
+  notifyInitialUiReady: () => ipcRenderer.send("renderer:initial-ui-ready"),
   onProgress: (callback: (event: ProgressEvent) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: ProgressEvent) => callback(progress);
     ipcRenderer.on("job:progress", listener);

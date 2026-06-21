@@ -11,6 +11,7 @@ async function readSchema(name: string): Promise<unknown> {
   const candidates = [
     path.join(process.cwd(), "src", "schemas", name),
     path.join(process.cwd(), "dist", "schemas", name),
+    path.join(process.resourcesPath ?? "", "app.asar", "dist", "schemas", name),
     path.join(process.resourcesPath ?? "", "app.asar.unpacked", "dist", "schemas", name),
     path.join(process.resourcesPath ?? "", "dist", "schemas", name)
   ];

@@ -43,9 +43,15 @@ npm run skill:build
 npm run package:win
 ```
 
-This runs the production build and invokes `electron-builder` for an unpacked Windows app folder. In WSL, the folder is written to `/mnt/c/Users/<you>/Downloads` when that folder is available.
+This runs a clean production build and invokes `electron-builder` for one x64 portable Windows executable:
 
-The Windows package embeds the compact HL Intelligence app icon and opens an in-app splash while the workspace loads.
+```text
+release/windows-portable/HL Intelligence.exe
+```
+
+Set `HL_WINDOWS_DOWNLOADS` to copy the final executable somewhere else. The package embeds the HL Intelligence icon, shows a native extraction splash first, then hands off to the matching in-app animated splash before the main workspace appears.
+
+See `docs/windows-portable-build.md` for the packaging audit, size check, and Windows icon verification flow.
 
 ## Security Rules
 

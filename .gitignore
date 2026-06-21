@@ -12,4 +12,12 @@ HL-Commenter-Skill.zip
 Preflight_Output/
 .DS_Store
 Thumbs.db
+
+# Generated Windows asset intermediates
+build/hl-intelligence-icon-20.png
+build/hl-intelligence-icon-24.png
+build/hl-intelligence-icon-40.png
+build/hl-intelligence-icon-source.svg
+build/hl-official-logo-horizontal-2048.png
+build/hl-official-mark.png
 *:Zone.Identifier

@@ -1,28 +1,46 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
 const buildDir = path.join(root, "build");
+const horizontalLogoPath = path.join(root, "Houlihan-Lokey-Logo+mark-1-line-horizontal_rgb.svg");
+
 mkdirSync(buildDir, { recursive: true });
 
-const iconSvgPath = path.join(buildDir, "hl-intelligence-app-icon.svg");
-const smallIconSvgPath = path.join(buildDir, "hl-intelligence-app-icon-small.svg");
-const tinyIconSvgPath = path.join(buildDir, "hl-intelligence-app-icon-tiny.svg");
+const iconSourceSvgPath = path.join(buildDir, "hl-intelligence-icon-source.svg");
 const splashSvgPath = path.join(buildDir, "hl-intelligence-portable-splash.svg");
+const officialLogoPngPath = path.join(buildDir, "hl-official-logo-horizontal-2048.png");
+const officialMarkPngPath = path.join(buildDir, "hl-official-mark.png");
 const iconPngPath = path.join(buildDir, "hl-intelligence-icon-1024.png");
 const icoPath = path.join(buildDir, "hl-intelligence.ico");
 const splashBmpPath = path.join(buildDir, "portable-splash.bmp");
 
-writeFileSync(iconSvgPath, appIconSvg());
-writeFileSync(smallIconSvgPath, smallAppIconSvg());
-writeFileSync(tinyIconSvgPath, tinyAppIconSvg());
-writeFileSync(splashSvgPath, portableSplashSvg());
+const horizontalLogo = readOfficialSvg(horizontalLogoPath);
 
 run("convert", [
   "-background",
   "none",
-  iconSvgPath,
+  horizontalLogoPath,
+  "-resize",
+  "2048x",
+  officialLogoPngPath
+]);
+run("convert", [
+  officialLogoPngPath,
+  "-crop",
+  "470x535+0+0",
+  "+repage",
+  officialMarkPngPath
+]);
+
+writeFileSync(iconSourceSvgPath, appIconSvg(readFileSync(officialMarkPngPath).toString("base64")), "utf8");
+writeFileSync(splashSvgPath, portableSplashSvg(horizontalLogo), "utf8");
+
+run("convert", [
+  "-background",
+  "none",
+  iconSourceSvgPath,
   "-resize",
   "1024x1024",
   "-depth",
@@ -30,14 +48,13 @@ run("convert", [
   iconPngPath
 ]);
 
-const iconSizes = [256, 128, 64, 48, 32, 16];
+const iconSizes = [256, 128, 64, 48, 40, 32, 24, 20, 16];
 const pngInputs = iconSizes.map((size) => {
   const output = path.join(buildDir, `hl-intelligence-icon-${size}.png`);
-  const sourceSvg = size <= 16 ? tinyIconSvgPath : size <= 32 ? smallIconSvgPath : iconSvgPath;
   run("convert", [
     "-background",
     "none",
-    sourceSvg,
+    iconSourceSvgPath,
     "-resize",
     `${size}x${size}`,
     "-depth",
@@ -66,127 +83,58 @@ run("convert", [
   `BMP3:${splashBmpPath}`
 ]);
 
-for (const pngInput of pngInputs) {
-  if (pngInput === iconPngPath) continue;
-}
-
 console.log(`Generated Windows assets:
   ${path.relative(root, icoPath)}
   ${path.relative(root, iconPngPath)}
   ${path.relative(root, splashBmpPath)}`);
 
-function appIconSvg() {
+function readOfficialSvg(svgPath) {
+  const svg = readFileSync(svgPath, "utf8");
+  const body = svg
+    .replace(/<\?xml[^>]*>\s*/i, "")
+    .replace(/<!--[\s\S]*?-->\s*/g, "")
+    .replace(/<svg[^>]*>/i, "")
+    .replace(/<\/svg>\s*$/i, "");
+  return body.trim();
+}
+
+function appIconSvg(officialMarkBase64) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="HL Intelligence app icon">
-  <defs>
-    <linearGradient id="edge" x1="140" y1="116" x2="884" y2="900" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#508BC9"/>
-      <stop offset="1" stop-color="#0067A5"/>
-    </linearGradient>
-  </defs>
-  <rect width="1024" height="1024" rx="176" fill="#002855"/>
-  <path d="M132 266V172h760v680H132V266Z" fill="none" stroke="url(#edge)" stroke-width="28" opacity="0.95"/>
-  <path d="M764 214h82v82M260 810h-82v-82" fill="none" stroke="#7E8597" stroke-width="18" stroke-linecap="square" opacity="0.52"/>
-  <g opacity="0.18" stroke="#FFFFFF" stroke-width="5">
-    <path d="M184 358h656M184 512h656M184 666h656"/>
-    <path d="M338 204v616M512 204v616M686 204v616"/>
-  </g>
-  <text x="512" y="594"
-    text-anchor="middle"
-    font-family="Segoe UI, Arial, Helvetica, sans-serif"
-    font-size="310"
-    font-weight="700"
-    letter-spacing="0"
-    fill="#FFFFFF">HL</text>
-  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M706 384L760 330H838" stroke="#508BC9" stroke-width="22"/>
-    <path d="M708 512H832" stroke="#508BC9" stroke-width="22"/>
-    <path d="M706 640L760 694H838" stroke="#508BC9" stroke-width="22"/>
-  </g>
-  <g fill="#FFFFFF" stroke="#508BC9" stroke-width="13">
-    <circle cx="706" cy="384" r="19"/>
-    <circle cx="838" cy="330" r="19"/>
-    <circle cx="832" cy="512" r="19"/>
-    <circle cx="706" cy="640" r="19"/>
-    <circle cx="838" cy="694" r="19"/>
-  </g>
+  <rect width="1024" height="1024" rx="144" fill="#FFFFFF"/>
+  <rect x="50" y="50" width="924" height="924" rx="116" fill="#FFFFFF" stroke="#D7DCE5" stroke-width="10"/>
+  <rect x="88" y="88" width="848" height="848" rx="86" fill="none" stroke="#EEF2F6" stroke-width="6"/>
+  <image x="167" y="121" width="690" height="783" preserveAspectRatio="xMidYMid meet" href="data:image/png;base64,${officialMarkBase64}"/>
 </svg>`;
 }
 
-function smallAppIconSvg() {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="HL Intelligence compact app icon">
-  <rect width="1024" height="1024" rx="176" fill="#002855"/>
-  <rect x="118" y="118" width="788" height="788" rx="92" fill="none" stroke="#508BC9" stroke-width="56"/>
-  <text x="510" y="626"
-    text-anchor="middle"
-    font-family="Segoe UI, Arial, Helvetica, sans-serif"
-    font-size="380"
-    font-weight="700"
-    letter-spacing="0"
-    fill="#FFFFFF">HL</text>
-  <g fill="#508BC9">
-    <circle cx="760" cy="338" r="42"/>
-    <circle cx="804" cy="512" r="42"/>
-    <circle cx="760" cy="686" r="42"/>
-  </g>
-</svg>`;
-}
-
-function tinyAppIconSvg() {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="HL Intelligence tiny app icon">
-  <rect width="1024" height="1024" rx="128" fill="#002855"/>
-  <text x="512" y="662"
-    text-anchor="middle"
-    font-family="Segoe UI, Arial, Helvetica, sans-serif"
-    font-size="470"
-    font-weight="800"
-    letter-spacing="0"
-    fill="#FFFFFF">HL</text>
-</svg>`;
-}
-
-function portableSplashSvg() {
+function portableSplashSvg(officialLogoBody) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="430" height="270" viewBox="0 0 430 270" role="img" aria-label="HL Intelligence loading">
   <rect width="430" height="270" fill="#F6F8FB"/>
   <rect x="0.5" y="0.5" width="429" height="269" fill="#FFFFFF" stroke="#D7DCE5"/>
-  <g fill="none" stroke="#EDF2F7" stroke-width="1">
-    ${gridLines()}
+  <rect x="22.5" y="22.5" width="385" height="225" fill="none" stroke="#E3E8EF"/>
+  <rect x="36.5" y="36.5" width="357" height="197" fill="none" stroke="#F1F4F8"/>
+  <g transform="translate(118 42) scale(0.52)">
+    ${officialLogoBody}
   </g>
-  <rect x="22.5" y="22.5" width="385" height="225" fill="none" stroke="#BDD5EA" stroke-width="1"/>
-  <rect x="36.5" y="36.5" width="357" height="197" fill="none" stroke="#CAD2DD" stroke-width="1"/>
-  <g transform="translate(166 46) scale(0.096)">
-    ${appIconSvg()
-      .replace(/<\?xml[^>]*>\s*/, "")
-      .replace(/<svg[^>]*>/, "")
-      .replace("</svg>", "")}
-  </g>
-  <text x="215" y="176"
+  <text x="215" y="143"
     text-anchor="middle"
-    font-family="Segoe UI, Arial, Helvetica, sans-serif"
+    font-family="Arial, Helvetica, sans-serif"
     font-size="19"
     font-weight="700"
     letter-spacing="0"
     fill="#002855">HL Intelligence</text>
-  <text x="215" y="218"
+  <text x="215" y="171"
     text-anchor="middle"
-    font-family="Segoe UI, Arial, Helvetica, sans-serif"
+    font-family="Arial, Helvetica, sans-serif"
     font-size="13"
     font-weight="500"
     letter-spacing="0"
-    fill="#525766">Interface is loading</text>
-  <rect x="104" y="235" width="222" height="3" fill="#E6EBF2"/>
-  <rect x="104" y="235" width="96" height="3" fill="#0067A5"/>
+    fill="#525766">Secure document preparation</text>
+  <rect x="104" y="232" width="222" height="3" fill="#E6EBF2"/>
+  <rect x="104" y="232" width="96" height="3" fill="#0067A5"/>
 </svg>`;
-}
-
-function gridLines() {
-  const lines = [];
-  for (let x = 34; x < 430; x += 34) lines.push(`<path d="M${x} 0V270"/>`);
-  for (let y = 34; y < 270; y += 34) lines.push(`<path d="M0 ${y}H430"/>`);
-  return lines.join("\n    ");
 }
 
 function run(command, args) {
