@@ -19,31 +19,16 @@
         "properties": {
           "id": { "type": "string", "minLength": 1, "maxLength": 40 },
           "anchor": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["kind"],
-            "properties": {
-              "kind": {
-                "enum": [
-                  "pdf_block",
-                  "pdf_page",
-                  "docx_paragraph",
-                  "docx_table_cell",
-                  "xlsx_cell",
-                  "xlsx_range",
-                  "pptx_shape",
-                  "pptx_slide"
-                ]
-              },
-              "page": { "type": "integer", "minimum": 1 },
-              "block_id": { "type": "string", "minLength": 1 },
-              "paragraph_id": { "type": "string", "minLength": 1 },
-              "sheet": { "type": "string", "minLength": 1 },
-              "cell": { "type": "string", "minLength": 1 },
-              "range": { "type": "string", "minLength": 1 },
-              "slide": { "type": "integer", "minimum": 1 },
-              "shape_id": { "type": "string", "minLength": 1 }
-            }
+            "oneOf": [
+              { "$ref": "#/$defs/pdf_block_anchor" },
+              { "$ref": "#/$defs/pdf_page_anchor" },
+              { "$ref": "#/$defs/docx_paragraph_anchor" },
+              { "$ref": "#/$defs/docx_table_cell_anchor" },
+              { "$ref": "#/$defs/xlsx_cell_anchor" },
+              { "$ref": "#/$defs/xlsx_range_anchor" },
+              { "$ref": "#/$defs/pptx_shape_anchor" },
+              { "$ref": "#/$defs/pptx_slide_anchor" }
+            ]
           },
           "evidence": { "type": "string", "maxLength": 2000 },
           "value": {
@@ -78,6 +63,91 @@
             ]
           }
         }
+      }
+    }
+  },
+  "$defs": {
+    "pdf_block_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "page", "block_id"],
+      "properties": {
+        "kind": { "const": "pdf_block" },
+        "page": { "type": "integer", "minimum": 1 },
+        "block_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "pdf_page_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "page"],
+      "properties": {
+        "kind": { "const": "pdf_page" },
+        "page": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "docx_paragraph_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "paragraph_id"],
+      "properties": {
+        "kind": { "const": "docx_paragraph" },
+        "paragraph_id": { "type": "string", "minLength": 1 },
+        "page": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "docx_table_cell_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "table_id", "row", "column", "cell_id"],
+      "properties": {
+        "kind": { "const": "docx_table_cell" },
+        "table_id": { "type": "string", "minLength": 1 },
+        "row": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 },
+        "cell_id": { "type": "string", "minLength": 1 },
+        "page": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "xlsx_cell_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sheet", "cell"],
+      "properties": {
+        "kind": { "const": "xlsx_cell" },
+        "sheet": { "type": "string", "minLength": 1 },
+        "cell": { "type": "string", "pattern": "^\\$?[A-Za-z]{1,3}\\$?[1-9][0-9]*$" }
+      }
+    },
+    "xlsx_range_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sheet", "range"],
+      "properties": {
+        "kind": { "const": "xlsx_range" },
+        "sheet": { "type": "string", "minLength": 1 },
+        "range": { "type": "string", "pattern": "^\\$?[A-Za-z]{1,3}\\$?[1-9][0-9]*(?::\\$?[A-Za-z]{1,3}\\$?[1-9][0-9]*)?$" }
+      }
+    },
+    "pptx_shape_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "slide", "slide_id", "shape_id"],
+      "properties": {
+        "kind": { "const": "pptx_shape" },
+        "slide": { "type": "integer", "minimum": 1 },
+        "slide_id": { "type": "integer", "minimum": 1 },
+        "shape_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "pptx_slide_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "slide", "slide_id"],
+      "properties": {
+        "kind": { "const": "pptx_slide" },
+        "slide": { "type": "integer", "minimum": 1 },
+        "slide_id": { "type": "integer", "minimum": 1 }
       }
     }
   }

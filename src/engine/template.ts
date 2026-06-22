@@ -52,11 +52,11 @@ export function renderComment(
   const values: Record<string, string> = {
     comment: finding.comment_body ?? "",
     value: finding.value ?? "",
-    page: String(finding.anchor.page ?? anchor?.page ?? ""),
+    page: String(anchorPage(finding.anchor) ?? anchor?.page ?? ""),
     total_pages: String(sourceMap.source.total_pages ?? ""),
-    sheet: finding.anchor.sheet ?? "",
-    cell: finding.anchor.cell ?? "",
-    slide: finding.anchor.slide ? String(finding.anchor.slide) : "",
+    sheet: anchorSheet(finding.anchor),
+    cell: anchorCell(finding.anchor),
+    slide: anchorSlide(finding.anchor),
     category: finding.category ?? "",
     severity: finding.severity ?? "",
     suggested_replacement: finding.suggested_replacement ?? ""
@@ -67,5 +67,34 @@ export function renderComment(
 }
 
 export function normalizeForEvidence(value: string): string {
-  return value.toLowerCase().replace(/[^\p{L}\p{N}.%$€£¥]+/gu, " ").replace(/\s+/g, " ").trim();
+  return value
+    .normalize("NFKC")
+    .replace(/\u00a0/g, " ")
+    .replace(/[\u2018\u2019\u201a\u201b]/g, "'")
+    .replace(/[\u201c\u201d\u201e\u201f]/g, '"')
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2212]/g, "-")
+    .replace(/(\p{L})-\s+(\p{Ll})/gu, "$1$2")
+    .replace(/([$€£¥])\s+(\d)/g, "$1$2")
+    .replace(/(\d)\s+(%)/g, "$1$2")
+    .replace(/(\d),(\d{3})(\D|$)/g, "$1$2$3")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}.%$€£¥'"-]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function anchorPage(anchor: ClaudeFinding["anchor"]): number | undefined {
+  return "page" in anchor ? anchor.page : undefined;
+}
+
+function anchorSheet(anchor: ClaudeFinding["anchor"]): string {
+  return "sheet" in anchor ? anchor.sheet : "";
+}
+
+function anchorCell(anchor: ClaudeFinding["anchor"]): string {
+  return "cell" in anchor ? anchor.cell : "range" in anchor ? anchor.range : "";
+}
+
+function anchorSlide(anchor: ClaudeFinding["anchor"]): string {
+  return "slide" in anchor ? String(anchor.slide) : "";
 }

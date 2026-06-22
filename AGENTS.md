@@ -10,6 +10,7 @@
 - `src/shared/` - Shared TypeScript contracts and brand tokens.
 - `skills/hl-commenter/` - Reusable Claude Skill source.
 - `scripts/` - Dev launcher, static-copy step, Skill ZIP builder, Windows asset/package scripts.
+- `scripts/run-final-windows-qa.ps1` - Native Windows final QA runner and fresh-folder launch smoke.
 - `tests/` - Synthetic fixtures and Vitest coverage.
 - `docs/` - Product, brand, support, privacy, and packaging documentation.
 - `public/brand/` - Unmodified copied logo asset used by the renderer.
@@ -27,6 +28,8 @@ npm run assets:windows
 
 ```bash
 npm run test
+npm run test:office
+npm run test:stress
 npm run smoke
 ```
 
@@ -34,10 +37,13 @@ npm run smoke
 
 ```bash
 npm run skill:build
+npm run demo:prepare
 npm run package:win
 ```
 
 `npm run package:win` builds a portable single-file Windows `.exe` and writes it to the Windows Downloads folder when available. Set `HL_WINDOWS_DOWNLOADS` to override the destination.
+
+Final release output is `release/windows-portable/HL Intelligence.exe`. Manager demo materials are generated under `test-artifacts/manager-demo/` and must remain outside the production package.
 
 ## Important Architectural Rules
 

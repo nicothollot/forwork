@@ -1,4 +1,15 @@
-export type DocumentType = "pdf" | "docx" | "xlsx" | "pptx";
+export type {
+  AnchorKind,
+  DocumentAnchor,
+  DocumentSupportStatus,
+  DocumentType
+} from "./documentTypes.js";
+import type {
+  AnchorKind,
+  DocumentAnchor,
+  DocumentSupportStatus,
+  DocumentType
+} from "./documentTypes.js";
 
 export type ProcessingMode = "text-only" | "text-visual" | "text-all-pages";
 
@@ -19,6 +30,8 @@ export interface FileMetadata {
   name: string;
   extension: string;
   type: DocumentType | "unsupported";
+  supportStatus?: DocumentSupportStatus;
+  supportMessage?: string;
   sizeBytes: number;
   countLabel?: string;
   count?: number;
@@ -42,6 +55,12 @@ export interface StyleConfig {
   examples: string[];
 }
 
+export interface SavedStylePreset {
+  id: string;
+  name: string;
+  style: StyleConfig;
+}
+
 export interface ReviewConfig {
   schema_version: "1.0";
   request_id: string;
@@ -61,9 +80,24 @@ export interface ReviewConfig {
 
 export interface SourceBlock {
   anchorId: string;
-  kind: "pdf_block" | "pdf_page";
-  page: number;
+  kind: AnchorKind;
+  anchor?: DocumentAnchor;
+  page?: number;
   blockId?: string;
+  paragraphId?: string;
+  tableId?: string;
+  cellId?: string;
+  row?: number;
+  column?: number;
+  sheet?: string;
+  cell?: string;
+  range?: string;
+  displayedValue?: string;
+  formula?: string;
+  numberFormat?: string;
+  slide?: number;
+  slideId?: number;
+  shapeId?: string;
   text: string;
   bbox?: {
     x: number;
@@ -76,7 +110,10 @@ export interface SourceBlock {
 export interface VisualPageRef {
   page: number;
   supplementPage: number;
+  supplementPageEnd?: number;
   reason: string;
+  sheet?: string;
+  sourceRange?: string;
 }
 
 export interface SourceMap {
@@ -87,7 +124,10 @@ export interface SourceMap {
     path?: string;
     sha256: string;
     document_type: DocumentType;
-    total_pages: number;
+    total_pages?: number;
+    total_slides?: number;
+    total_sheets?: number;
+    total_sections?: number;
   };
   anchors: Record<string, SourceBlock>;
   visual_pages: VisualPageRef[];
@@ -150,29 +190,22 @@ export interface PreflightFileResult {
   manifestPath: string;
   status: "complete" | "error" | "cancelled";
   error?: string;
+  summary?: PreflightResultSummary;
+}
+
+export interface PreflightResultSummary {
+  originalSizeBytes: number;
+  markdownSizeBytes: number;
+  visualSupplementSizeBytes: number;
+  approximateTokenEstimate: number;
+  approximateReductionPercent: number | null;
+  visualPageCount: number;
+  warningCount: number;
 }
 
 export interface ClaudeFinding {
   id: string;
-  anchor: {
-    kind:
-      | "pdf_block"
-      | "pdf_page"
-      | "docx_paragraph"
-      | "docx_table_cell"
-      | "xlsx_cell"
-      | "xlsx_range"
-      | "pptx_shape"
-      | "pptx_slide";
-    page?: number;
-    block_id?: string;
-    paragraph_id?: string;
-    sheet?: string;
-    cell?: string;
-    range?: string;
-    slide?: number;
-    shape_id?: string;
-  };
+  anchor: DocumentAnchor;
   evidence?: string;
   value?: string | null;
   comment_body: string;
@@ -210,6 +243,11 @@ export interface ClaudeValidationResult {
   };
 }
 
+export interface ApprovedFindingInput {
+  id: string;
+  finalComment?: string;
+}
+
 export interface CreateCommentedPdfInput {
   sourcePath: string;
   localJobPath: string;
@@ -217,6 +255,7 @@ export interface CreateCommentedPdfInput {
   claudeJsonPath?: string;
   outputFolder: string;
   outputFilename?: string;
+  approvedFindings?: ApprovedFindingInput[];
 }
 
 export interface CreateCommentedPdfResult {
@@ -226,8 +265,72 @@ export interface CreateCommentedPdfResult {
   skipped: FindingValidation[];
 }
 
+export interface DocumentInspection {
+  schema_version: "1.0";
+  document_type: DocumentType;
+  source_path: string;
+  filename: string;
+  sha256?: string;
+  size_bytes: number;
+  modified_time_ms: number;
+  support_status: DocumentSupportStatus;
+  support_message: string;
+  counts: {
+    pages?: number;
+    slides?: number;
+    sheets?: number;
+    sections?: number;
+  };
+}
+
+export interface PreparedDocument {
+  schema_version: "1.0";
+  document_type: DocumentType;
+  source_path: string;
+  source_sha256: string;
+  markdown: string;
+  source_map: SourceMap;
+  visual_pages: VisualPageRef[];
+  counts: DocumentInspection["counts"];
+  artifacts: {
+    visual_pdf_path?: string | null;
+  };
+}
+
+export interface ReviewJob {
+  schema_version: "1.0";
+  processing_version: string;
+  request_id: string;
+  created_at: string;
+  source: SourceMap["source"];
+  style: StyleConfig;
+  source_map: SourceMap;
+}
+
+export type ReviewFinding = ClaudeFinding;
+export type CommentOutputResult = CreateCommentedPdfResult;
+
+export interface OutputVerification {
+  schema_version: "1.0";
+  document_type: DocumentType;
+  output_path: string;
+  ok: boolean;
+  message: string;
+}
+
+export interface CancellationToken {
+  readonly cancelled: boolean;
+  throwIfCancelled(): void;
+}
+
 export interface AppSettings {
   lastOutputFolder?: string;
+  skillInstalled?: boolean;
+  commenter?: {
+    selectedCommentStyle?: string;
+    customStyle?: StyleConfig;
+    savedStylePresets?: SavedStylePreset[];
+  };
 }
 
 export interface SkillBuildResult {
@@ -235,13 +338,33 @@ export interface SkillBuildResult {
   entries: string[];
 }
 
+export interface ReviewJobFile {
+  path: string;
+  name: string;
+  requestId: string;
+  createdAt: string;
+  sourceFilename: string;
+  sourceSha256: string;
+  documentType: DocumentType;
+}
+
+export interface ReviewSourceValidation {
+  ok: boolean;
+  message: string;
+  expectedSha256: string;
+  actualSha256?: string;
+  sourceChanged: boolean;
+}
+
 export interface AppApi {
   selectDocument(): Promise<FileMetadata | null>;
   selectDocuments(): Promise<FileMetadata[]>;
   selectJsonFile(): Promise<{ path: string; name: string; text: string } | null>;
+  selectReviewJobFile(): Promise<ReviewJobFile | null>;
   selectFolder(): Promise<string | null>;
   getDroppedFilePath(file: File): string;
   getMetadata(path: string): Promise<FileMetadata>;
+  validateReviewSource(input: { localJobPath: string; sourcePath: string }): Promise<ReviewSourceValidation>;
   prepareReview(input: PrepareReviewInput): Promise<ReviewPackageResult>;
   validateClaudeResult(input: {
     localJobPath: string;
@@ -250,7 +373,7 @@ export interface AppApi {
   createCommentedPdf(input: CreateCommentedPdfInput): Promise<CreateCommentedPdfResult>;
   generatePreflight(input: PreflightGenerateInput): Promise<PreflightFileResult[]>;
   cancelJob(jobId: string): Promise<void>;
-  buildSkillZip(): Promise<SkillBuildResult>;
+  buildSkillZip(input?: { outputPath?: string; defaultFolder?: string }): Promise<SkillBuildResult | null>;
   openPath(path: string): Promise<void>;
   copyText(text: string): Promise<void>;
   readTextFile(path: string): Promise<string>;

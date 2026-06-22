@@ -1,10 +1,31 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, session, shell } from "electron";
+import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AppSettings, PreflightGenerateInput, ProgressEvent } from "../shared/types.js";
+import type {
+  AppSettings,
+  PreflightGenerateInput,
+  ProgressEvent,
+  ReviewJobFile,
+  ReviewSourceValidation
+} from "../shared/types.js";
 import type { LocalReviewJob } from "../shared/types.js";
+import { PICKABLE_DOCUMENT_EXTENSIONS } from "../shared/documentTypes.js";
+import {
+  TrustedPathRegistry,
+  assertTrustedIpcSender,
+  parseCreateCommentedInput,
+  parseOptionalSkillBuildInput,
+  parsePreflightGenerateInput,
+  parsePrepareReviewInput,
+  parseSettings,
+  parseStringPayload,
+  parseValidateClaudeInput,
+  parseValidateSourceInput
+} from "./ipcValidation.js";
+import { assertJsonInputWithinLimits } from "../engine/safetyLimits.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_USER_MODEL_ID = "com.houlihanlokey.hlintelligence";
@@ -14,6 +35,8 @@ const MIN_SPLASH_VISIBLE_MS = 650;
 const RENDERER_READY_TIMEOUT_MS = 8000;
 
 const cancelledJobs = new Set<string>();
+const activeJobs = new Set<string>();
+const trustedPaths = new TrustedPathRegistry();
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 let splashShownAt = 0;
@@ -29,6 +52,7 @@ if (process.platform === "win32") {
 }
 
 app.whenReady().then(async () => {
+  configureSessionSecurity();
   createStartupSplashWindow();
   registerIpc();
   await createWindow();
@@ -39,6 +63,11 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  for (const jobId of activeJobs) cancelledJobs.add(jobId);
+  void import("../engine/pdfWorkerClient.js").then(({ terminateAllPdfWorkers }) => terminateAllPdfWorkers()).catch(() => undefined);
 });
 
 async function createWindow(): Promise<void> {
@@ -61,14 +90,15 @@ async function createWindow(): Promise<void> {
     autoHideMenuBar: true,
     icon: appIconPath(),
     webPreferences: {
-      preload: path.join(__dirname, "../preload/preload.js"),
+      preload: preloadPath(),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: true
     }
   });
 
   mainWindow = window;
+  configureWindowSecurity(window);
 
   window.once("ready-to-show", () => {
     if (mainWindow !== window) return;
@@ -99,6 +129,48 @@ async function createWindow(): Promise<void> {
     if (!window.isDestroyed()) window.show();
     throw error;
   }
+}
+
+function configureSessionSecurity(): void {
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [contentSecurityPolicy(Boolean(process.env.VITE_DEV_SERVER_URL))]
+      }
+    });
+  });
+}
+
+function configureWindowSecurity(window: BrowserWindow): void {
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("will-navigate", (event, url) => {
+    if (isAllowedRendererNavigation(url, window.webContents.getURL())) return;
+    event.preventDefault();
+  });
+}
+
+function contentSecurityPolicy(dev: boolean): string {
+  const connect = dev ? "connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*;" : "connect-src 'none';";
+  return [
+    "default-src 'self';",
+    "script-src 'self';",
+    "style-src 'self' 'unsafe-inline';",
+    "img-src 'self' data:;",
+    "font-src 'self';",
+    connect,
+    "object-src 'none';",
+    "base-uri 'none';",
+    "form-action 'none';",
+    "frame-ancestors 'none';"
+  ].join(" ");
+}
+
+function isAllowedRendererNavigation(nextUrl: string, currentUrl: string): boolean {
+  if (nextUrl === currentUrl) return true;
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+  if (devServerUrl && nextUrl.startsWith(devServerUrl)) return true;
+  return nextUrl.startsWith("file://") && currentUrl.startsWith("file://");
 }
 
 function maybeShowMainWindow(): void {
@@ -194,10 +266,25 @@ function appIconPath(): string {
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
 }
 
+function preloadPath(): string {
+  if (!app.isPackaged && process.env.HL_VISUAL_QA === "1") {
+    return path.join(__dirname, "../preload/visualQaPreload.cjs");
+  }
+  return path.join(__dirname, "../preload/preload.cjs");
+}
+
 function skillSourceRoot(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, "skills", "hl-commenter")
     : path.join(process.cwd(), "skills", "hl-commenter");
+}
+
+function requireTrustedSender(event: IpcMainInvokeEvent | IpcMainEvent): void {
+  assertTrustedIpcSender({
+    senderId: event.sender.id,
+    mainSenderId: mainWindow?.webContents.id ?? null,
+    senderUrl: event.senderFrame?.url ?? event.sender.getURL()
+  });
 }
 
 function splashHtml(): string {
@@ -364,40 +451,45 @@ function splashLogoMarkup(): string {
 
 function registerIpc(): void {
   ipcMain.on("renderer:initial-ui-ready", (event) => {
-    if (!mainWindow || event.sender !== mainWindow.webContents) return;
+    try {
+      requireTrustedSender(event);
+    } catch {
+      return;
+    }
     rendererInitialUiReady = true;
     maybeShowMainWindow();
   });
 
-  ipcMain.handle("dialog:selectDocument", async () => {
+  ipcMain.handle("dialog:selectDocument", async (event) => {
+    requireTrustedSender(event);
     const result = await dialog.showOpenDialog({
       title: "Browse document",
       properties: ["openFile"],
-      filters: [
-        { name: "Documents", extensions: ["pdf", "docx", "xlsx", "pptx"] },
-        { name: "PDF", extensions: ["pdf"] }
-      ]
+      filters: [{ name: "Documents", extensions: PICKABLE_DOCUMENT_EXTENSIONS }]
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     const { getFileMetadata } = await import("../engine/metadata.js");
-    return getFileMetadata(result.filePaths[0], true);
+    const metadata = await getFileMetadata(result.filePaths[0], true);
+    if (metadata.supportStatus === "verified") trustedPaths.registerInput(metadata.path);
+    return metadata;
   });
 
-  ipcMain.handle("dialog:selectDocuments", async () => {
+  ipcMain.handle("dialog:selectDocuments", async (event) => {
+    requireTrustedSender(event);
     const result = await dialog.showOpenDialog({
       title: "Browse files",
       properties: ["openFile", "multiSelections"],
-      filters: [
-        { name: "Documents", extensions: ["pdf", "docx", "xlsx", "pptx"] },
-        { name: "PDF", extensions: ["pdf"] }
-      ]
+      filters: [{ name: "Documents", extensions: PICKABLE_DOCUMENT_EXTENSIONS }]
     });
     if (result.canceled) return [];
     const { getFileMetadata } = await import("../engine/metadata.js");
-    return Promise.all(result.filePaths.map((filePath) => getFileMetadata(filePath, false)));
+    const metadata = await Promise.all(result.filePaths.map((filePath) => getFileMetadata(filePath, false)));
+    metadata.filter((item) => item.supportStatus === "verified").forEach((item) => trustedPaths.registerInput(item.path));
+    return metadata;
   });
 
-  ipcMain.handle("dialog:selectJsonFile", async () => {
+  ipcMain.handle("dialog:selectJsonFile", async (event) => {
+    requireTrustedSender(event);
     const result = await dialog.showOpenDialog({
       title: "Import Claude result",
       properties: ["openFile"],
@@ -405,29 +497,87 @@ function registerIpc(): void {
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     const selectedPath = result.filePaths[0];
-    return { path: selectedPath, name: path.basename(selectedPath), text: await readFile(selectedPath, "utf8") };
+    const text = await readFile(selectedPath, "utf8");
+    assertJsonInputWithinLimits(text);
+    trustedPaths.registerReadableTextFile(selectedPath);
+    return { path: selectedPath, name: path.basename(selectedPath), text };
   });
 
-  ipcMain.handle("dialog:selectFolder", async () => {
+  ipcMain.handle("dialog:selectReviewJobFile", async (event) => {
+    requireTrustedSender(event);
+    const result = await dialog.showOpenDialog({
+      title: "Select review-job.hlreview",
+      properties: ["openFile"],
+      filters: [{ name: "HL review job", extensions: ["hlreview"] }]
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    trustedPaths.registerReadableTextFile(result.filePaths[0]);
+    return readReviewJobSummary(result.filePaths[0]);
+  });
+
+  ipcMain.handle("dialog:selectFolder", async (event) => {
+    requireTrustedSender(event);
     const result = await dialog.showOpenDialog({
       title: "Select output folder",
       properties: ["openDirectory", "createDirectory"]
     });
     if (result.canceled || result.filePaths.length === 0) return null;
+    trustedPaths.registerOutputFolder(result.filePaths[0]);
     return result.filePaths[0];
   });
 
-  ipcMain.handle("file:getMetadata", async (_event, filePath: string) => {
+  ipcMain.handle("file:getMetadata", async (event, rawPath: unknown) => {
+    requireTrustedSender(event);
+    const filePath = parseStringPayload(rawPath, "filePath");
     const { getFileMetadata } = await import("../engine/metadata.js");
-    return getFileMetadata(filePath, true);
+    const metadata = await getFileMetadata(filePath, true);
+    if (metadata.supportStatus === "verified") trustedPaths.registerInput(metadata.path);
+    return metadata;
   });
 
-  ipcMain.handle("review:prepare", async (_event, input) => {
+  ipcMain.handle("review:validateSource", async (event, rawInput: unknown) => {
+    requireTrustedSender(event);
+    const input = parseValidateSourceInput(rawInput);
+    const [{ readJsonFile }, { cachedSha256File }] = await Promise.all([
+      import("../engine/fileSafety.js"),
+      import("../engine/jobFoundation.js")
+    ]);
+    const localJob = await readJsonFile<LocalReviewJob>(input.localJobPath);
+    let actualSha256: string | undefined;
+    try {
+      actualSha256 = await cachedSha256File(input.sourcePath);
+    } catch (error) {
+      return {
+        ok: false,
+        expectedSha256: localJob.source.sha256,
+        sourceChanged: false,
+        message: `Could not read the selected source file. Select the original ${localJob.source.filename} file and try again.`
+      } satisfies ReviewSourceValidation;
+    }
+    const ok = actualSha256 === localJob.source.sha256;
+    return {
+      ok,
+      expectedSha256: localJob.source.sha256,
+      actualSha256,
+      sourceChanged: !ok,
+      message: ok
+        ? "Selected source matches the review job."
+        : `The selected source file does not match ${localJob.source.filename}. Select the original source file used to create this review job.`
+    } satisfies ReviewSourceValidation;
+  });
+
+  ipcMain.handle("review:prepare", async (event, rawInput: unknown) => {
+    requireTrustedSender(event);
+    const input = parsePrepareReviewInput(rawInput);
     const { prepareReviewPackage } = await import("../engine/reviewPackage.js");
-    return prepareReviewPackage(input);
+    const result = await prepareReviewPackage(input);
+    trustedPaths.registerReviewPackage(result);
+    return result;
   });
 
-  ipcMain.handle("review:validateClaude", async (_event, input: { localJobPath: string; jsonText: string }) => {
+  ipcMain.handle("review:validateClaude", async (event, rawInput: unknown) => {
+    requireTrustedSender(event);
+    const input = parseValidateClaudeInput(rawInput);
     const [{ readJsonFile }, { validateClaudeResultText }] = await Promise.all([
       import("../engine/fileSafety.js"),
       import("../engine/resultValidation.js")
@@ -436,44 +586,110 @@ function registerIpc(): void {
     return validateClaudeResultText(localJob, input.jsonText);
   });
 
-  ipcMain.handle("review:createCommentedPdf", async (_event, input) => {
-    const { createCommentedPdf } = await import("../engine/pdfComments.js");
-    return createCommentedPdf(input);
+  ipcMain.handle("review:createCommentedPdf", async (event, rawInput: unknown) => {
+    requireTrustedSender(event);
+    const input = parseCreateCommentedInput(rawInput);
+    const { createCommentedDocument } = await import("../engine/commentOutput.js");
+    const result = await createCommentedDocument(input);
+    trustedPaths.registerCommentOutput(result);
+    return result;
   });
 
-  ipcMain.handle("preflight:generate", async (event, input: PreflightGenerateInput) => {
+  ipcMain.handle("preflight:generate", async (event, rawInput: unknown) => {
+    requireTrustedSender(event);
+    const input: PreflightGenerateInput = parsePreflightGenerateInput(rawInput);
     const { generatePreflightFiles } = await import("../engine/preflight.js");
     cancelledJobs.delete(input.jobId);
+    activeJobs.add(input.jobId);
     const sender = event.sender;
-    return generatePreflightFiles(
-      input,
-      (progress: ProgressEvent) => sender.send("job:progress", progress),
-      (jobId) => cancelledJobs.has(jobId)
-    );
+    try {
+      const results = await generatePreflightFiles(
+        input,
+        (progress: ProgressEvent) => sender.send("job:progress", progress),
+        (jobId) => cancelledJobs.has(jobId)
+      );
+      results.forEach((result) => trustedPaths.registerPreflightResult(result));
+      return results;
+    } finally {
+      activeJobs.delete(input.jobId);
+    }
   });
 
-  ipcMain.handle("job:cancel", async (_event, jobId: string) => {
+  ipcMain.handle("job:cancel", async (event, rawJobId: unknown) => {
+    requireTrustedSender(event);
+    const jobId = parseStringPayload(rawJobId, "jobId");
     cancelledJobs.add(jobId);
   });
 
-  ipcMain.handle("skill:buildZip", async () => {
+  ipcMain.handle("skill:buildZip", async (event, rawInput?: unknown) => {
+    requireTrustedSender(event);
+    const input = parseOptionalSkillBuildInput(rawInput);
     const { buildSkillZip } = await import("../engine/skillZip.js");
-    return buildSkillZip(process.cwd(), skillSourceRoot());
+    let outputPath = input?.outputPath;
+    if (!outputPath) {
+      const defaultFolder = input?.defaultFolder || app.getPath("downloads");
+      const result = await dialog.showSaveDialog({
+        title: "Save HL Commenter Skill",
+        defaultPath: path.join(defaultFolder, "HL-Commenter-Skill.zip"),
+        filters: [{ name: "ZIP archive", extensions: ["zip"] }]
+      });
+      if (result.canceled || !result.filePath) return null;
+      outputPath = result.filePath;
+    }
+    const result = await buildSkillZip(process.cwd(), skillSourceRoot(), outputPath);
+    trustedPaths.registerJobOutput(result.zipPath);
+    return result;
   });
 
-  ipcMain.handle("shell:openPath", async (_event, targetPath: string) => {
+  ipcMain.handle("shell:openPath", async (event, rawPath: unknown) => {
+    requireTrustedSender(event);
+    const targetPath = parseStringPayload(rawPath, "targetPath");
+    trustedPaths.assertCanOpen(targetPath);
     await shell.openPath(targetPath);
   });
-  ipcMain.handle("clipboard:writeText", async (_event, text: string) => {
+  ipcMain.handle("clipboard:writeText", async (event, rawText: unknown) => {
+    requireTrustedSender(event);
+    const text = parseStringPayload(rawText, "text");
     clipboard.writeText(text);
   });
-  ipcMain.handle("file:readText", async (_event, filePath: string) => readFile(filePath, "utf8"));
-  ipcMain.handle("settings:get", async (): Promise<AppSettings> => {
-    const { readSettings } = await import("../engine/settings.js");
-    return readSettings(app.getPath("userData"));
+  ipcMain.handle("file:readText", async (event, rawPath: unknown) => {
+    requireTrustedSender(event);
+    const filePath = parseStringPayload(rawPath, "filePath");
+    try {
+      trustedPaths.assertCanReadText(filePath);
+    } catch (error) {
+      if (path.extname(filePath).toLowerCase() !== ".json") throw error;
+    }
+    const text = await readFile(filePath, "utf8");
+    assertJsonInputWithinLimits(text);
+    return text;
   });
-  ipcMain.handle("settings:save", async (_event, settings: AppSettings) => {
+  ipcMain.handle("settings:get", async (event): Promise<AppSettings> => {
+    requireTrustedSender(event);
+    const { readSettings } = await import("../engine/settings.js");
+    const settings = await readSettings(app.getPath("userData"));
+    if (settings.lastOutputFolder) trustedPaths.registerOutputFolder(settings.lastOutputFolder);
+    return settings;
+  });
+  ipcMain.handle("settings:save", async (event, rawSettings: unknown) => {
+    requireTrustedSender(event);
+    const settings: AppSettings = parseSettings(rawSettings);
+    if (settings.lastOutputFolder) trustedPaths.registerOutputFolder(settings.lastOutputFolder);
     const { saveSettings } = await import("../engine/settings.js");
     return saveSettings(app.getPath("userData"), settings);
   });
+}
+
+async function readReviewJobSummary(filePath: string): Promise<ReviewJobFile> {
+  const { readJsonFile } = await import("../engine/fileSafety.js");
+  const localJob = await readJsonFile<LocalReviewJob>(filePath);
+  return {
+    path: filePath,
+    name: path.basename(filePath),
+    requestId: localJob.request_id,
+    createdAt: localJob.created_at,
+    sourceFilename: localJob.source.filename,
+    sourceSha256: localJob.source.sha256,
+    documentType: localJob.source.document_type
+  };
 }

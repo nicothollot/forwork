@@ -1,9 +1,13 @@
+import { stat } from "node:fs/promises";
 import path from "node:path";
 import type { PreflightFileResult, PreflightGenerateInput, ProgressEvent } from "../shared/types.js";
 import { PROCESSING_VERSION } from "./constants.js";
 import { basenameWithoutExtension, ensureDirectory, ensureUniquePath, writeFileAtomic } from "./fileSafety.js";
-import { sha256File } from "./hash.js";
-import { extractPdf, stageEvent, writeVisualSupplementPdf } from "./pdfAdapter.js";
+import { documentAdapterRegistry } from "./documentAdapterRegistry.js";
+import { documentSupportForPath, documentTypeForPath } from "./documentDetection.js";
+import { cachedSha256File, cleanupPaths, createProgressReporter } from "./jobFoundation.js";
+import { verifyDocumentSignature } from "./documentSignatures.js";
+import { assertGeneratedOutputWithinLimits, assertSourceFileWithinLimits } from "./safetyLimits.js";
 
 export type ProgressSink = (event: ProgressEvent) => void;
 export type CancelCheck = (jobId: string) => boolean;
@@ -18,45 +22,48 @@ export async function generatePreflightFiles(
 
   for (const file of input.files) {
     const filePath = file.path;
-    const send = (stage: ProgressEvent["stage"], percent: number, message: string) => {
-      progress(stageEvent(input.jobId, filePath, stage, percent, message));
-    };
+    const send = createProgressReporter(input.jobId, filePath, progress);
+    let outputFolder: string | null = null;
 
     try {
       if (isCancelled(input.jobId)) throw new Error("cancelled");
-      if (path.extname(filePath).toLowerCase() !== ".pdf") {
-        throw new Error("Only PDF preflight is verified in this build.");
-      }
+      const documentType = documentTypeForPath(filePath);
+      if (!documentType) throw new Error(documentSupportForPath(filePath).message);
+      const adapter = documentAdapterRegistry.get(documentType);
+      if (!adapter) throw new Error(documentSupportForPath(filePath).message);
+      await assertSourceFileWithinLimits(filePath);
+      await verifyDocumentSignature(filePath, documentType);
 
       send("hashing", 5, "Hashing source file");
-      const sourceHash = await sha256File(filePath);
+      const sourceHash = await cachedSha256File(filePath);
+      const sourceSizeBytes = (await stat(filePath)).size;
       const sourceBase = basenameWithoutExtension(filePath);
-      const outputFolder = await ensureUniquePath(path.join(input.outputFolder, sourceBase));
+      outputFolder = await ensureUniquePath(path.join(input.outputFolder, sourceBase));
       await ensureDirectory(outputFolder);
 
       send("extracting", 10, "Extracting Markdown and anchors");
-      const extraction = await extractPdf(
-        filePath,
-        {
-          mode: file.mode,
-          sourceHash,
-          forceVisualSupplement: input.options.forceVisualSupplement
-        },
-        send,
-        () => isCancelled(input.jobId)
-      );
+      const prepared = await adapter.prepareDocument({
+        sourcePath: filePath,
+        mode: file.mode,
+        sourceHash,
+        outputFolder,
+        outputBaseName: sourceBase,
+        forceVisualSupplement: input.options.forceVisualSupplement,
+        preserveExistingComments: input.options.preserveExistingComments,
+        progress: send,
+        isCancelled: () => isCancelled(input.jobId)
+      });
 
       if (isCancelled(input.jobId)) throw new Error("cancelled");
       send("writing", 82, "Writing Markdown");
       const markdownPath = path.join(outputFolder, `${sourceBase}.md`);
-      await writeFileAtomic(markdownPath, extraction.markdown);
-
-      send("writing", 88, "Writing visual supplement");
-      const visualPdfPath = await writeVisualSupplementPdf(
-        filePath,
-        extraction.visualPages.map((page) => page.page),
-        path.join(outputFolder, `${sourceBase}_visuals.pdf`)
-      );
+      await writeFileAtomic(markdownPath, prepared.markdown);
+      const markdownSizeBytes = Buffer.byteLength(prepared.markdown, "utf8");
+      const visualSupplementSizeBytes = prepared.artifacts.visual_pdf_path
+        ? (await stat(prepared.artifacts.visual_pdf_path)).size
+        : 0;
+      const totalOutputBytes = markdownSizeBytes + visualSupplementSizeBytes;
+      const approximateReductionPercent = Math.round((1 - totalOutputBytes / Math.max(1, sourceSizeBytes)) * 100);
 
       const manifestPath = path.join(outputFolder, `${sourceBase}_manifest.json`);
       await writeFileAtomic(
@@ -65,29 +72,44 @@ export async function generatePreflightFiles(
           {
             schema_version: "1.0",
             processing_version: PROCESSING_VERSION,
-            source: extraction.sourceMap.source,
+            source: prepared.source_map.source,
             mode: file.mode,
             markdown_file: path.basename(markdownPath),
-            visual_supplement_file: visualPdfPath ? path.basename(visualPdfPath) : null,
-            visual_pages: extraction.visualPages,
-            anchor_count: Object.keys(extraction.sourceMap.anchors).length
+            visual_supplement_file: prepared.artifacts.visual_pdf_path ? path.basename(prepared.artifacts.visual_pdf_path) : null,
+            visual_pages: prepared.visual_pages,
+            anchor_count: Object.keys(prepared.source_map.anchors).length
           },
           null,
           2
         )
       );
+      await assertGeneratedOutputWithinLimits([
+        markdownPath,
+        prepared.artifacts.visual_pdf_path ?? "",
+        manifestPath
+      ]);
 
       send("complete", 100, "Complete");
       results.push({
         sourcePath: filePath,
         outputFolder,
         markdownPath,
-        visualPdfPath,
+        visualPdfPath: prepared.artifacts.visual_pdf_path ?? null,
         manifestPath,
-        status: "complete"
+        status: "complete",
+        summary: {
+          originalSizeBytes: sourceSizeBytes,
+          markdownSizeBytes,
+          visualSupplementSizeBytes,
+          approximateTokenEstimate: Math.ceil(prepared.markdown.length / 4),
+          approximateReductionPercent,
+          visualPageCount: prepared.visual_pages.length,
+          warningCount: 0
+        }
       });
     } catch (error) {
       const status = error instanceof Error && error.message === "cancelled" ? "cancelled" : "error";
+      if (outputFolder) await cleanupPaths([outputFolder]);
       send(status, status === "cancelled" ? 0 : 100, status === "cancelled" ? "Cancelled" : "Error");
       results.push({
         sourcePath: filePath,

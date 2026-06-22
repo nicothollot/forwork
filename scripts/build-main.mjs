@@ -1,4 +1,4 @@
-import { rm } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import path from "node:path";
 import { rolldown } from "rolldown";
@@ -22,12 +22,29 @@ await bundle({
 });
 
 await bundle({
-  input: { preload: path.join(root, "src", "preload", "preload.ts") },
-  outDir: path.join(root, "dist", "preload"),
+  input: { pdfWorkerHost: path.join(root, "src", "engine", "pdfWorkerHost.ts") },
+  outDir: path.join(root, "dist", "main"),
   chunkFileNames: "chunks/[name]-[hash].js"
 });
 
-async function bundle({ input, outDir, chunkFileNames }) {
+await bundle({
+  input: {
+    preload: path.join(root, "src", "preload", "preload.ts"),
+    visualQaPreload: path.join(root, "src", "preload", "visualQaPreload.ts")
+  },
+  outDir: path.join(root, "dist", "preload"),
+  chunkFileNames: "chunks/[name]-[hash].cjs",
+  format: "cjs",
+  entryFileNames: "[name].cjs"
+});
+
+await mkdir(path.join(root, "dist", "main", "chunks"), { recursive: true });
+await cp(
+  path.join(root, "node_modules", "pdfjs-dist", "legacy", "build", "pdf.worker.mjs"),
+  path.join(root, "dist", "main", "chunks", "pdf.worker.mjs")
+);
+
+async function bundle({ input, outDir, chunkFileNames, format = "esm", entryFileNames = "[name].js" }) {
   const build = await rolldown({
     input,
     platform: "node",
@@ -38,8 +55,8 @@ async function bundle({ input, outDir, chunkFileNames }) {
 
   await build.write({
     dir: outDir,
-    format: "esm",
-    entryFileNames: "[name].js",
+    format,
+    entryFileNames,
     chunkFileNames,
     sourcemap: false
   });

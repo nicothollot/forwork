@@ -16,9 +16,10 @@ The app has exactly two primary tabs:
 - `review-config.json` generation and JSON Schema validation
 - Claude-style `hl_comments.json` import and validation
 - Native PDF comment/highlight output to a new file
-- Multi-file PDF preflight queue
+- Native Word, Excel, and PowerPoint comment/note output to new files
+- Multi-file PDF, Word, Excel, and PowerPoint preflight queue
 
-DOCX, XLSX, and PPTX adapters are structured as planned formats but are not labeled supported until extraction and output tests are added.
+PDF, DOCX, DOCM, XLSX, XLSM, PPTX, and PPTM adapters are verified with local native engines. Legacy DOC, XLS, and PPT files require conversion to modern Office formats before processing.
 
 ## Development
 
@@ -32,9 +33,20 @@ npm run dev
 ## Build and Test
 
 ```bash
+npm ci
+npm run typecheck
+npm run lint
 npm run build
 npm run test
+npm run test:office
+npm run test:stress
 npm run skill:build
+```
+
+For clean verification, use:
+
+```bash
+npm run verify:clean
 ```
 
 ## Windows Packaging
@@ -53,13 +65,28 @@ Set `HL_WINDOWS_DOWNLOADS` to copy the final executable somewhere else. The pack
 
 See `docs/windows-portable-build.md` for the packaging audit, size check, and Windows icon verification flow.
 
+Final release candidate:
+
+- Executable: `release/windows-portable/HL Intelligence.exe`
+- Size: `83,923,544` bytes (`80.0 MiB`)
+- Skill ZIP: `HL-Commenter-Skill.zip`
+- Final readiness: `docs/final-readiness.md`
+- Windows QA runbook: `docs/final-windows-qa.md`
+- Manager demo: `docs/manager-demo.md`
+
+Prepare synthetic demo materials with:
+
+```bash
+npm run demo:prepare
+```
+
 ## Security Rules
 
 - All document processing is local.
 - Source documents are never uploaded by HL Intelligence.
 - No LLM APIs are called.
 - Source files are never overwritten.
-- Comments are written to a new PDF.
+- Comments are written to a new PDF, Word, Excel, or PowerPoint output file.
 - SHA-256 hashes are retained for round-trip validation.
 - Raw document text is not logged.
 - Macros and embedded scripts are never executed.

@@ -5,7 +5,7 @@ Primary target: Windows desktop.
 ## Build Portable Windows Executable
 
 ```bash
-npm install
+npm ci
 npm run package:win
 ```
 
@@ -25,6 +25,8 @@ release/windows-portable/HL Intelligence.exe
 ```
 
 This executable requires no installer wizard, no MSI, and no adjacent application folder. Electron Builder still creates an intermediate `win-unpacked` staging folder for diagnostics under `release/windows-portable-staging`, but only the portable executable is copied to the final output directory.
+
+Current final release candidate size: `83,923,544` bytes (`80.0 MiB`).
 
 Set `HL_WINDOWS_DOWNLOADS` to override the destination:
 
@@ -48,6 +50,8 @@ HL_WINDOWS_DOWNLOADS=/mnt/c/Users/nicot/Downloads npm run package:win
 - `node_modules`, source maps, docs, tests, screenshots, brand guide PDFs, old release output, and duplicate `public/brand` resources are excluded from runtime packaging.
 - Electron locales are limited to `en-US`.
 - `scripts/check-windows-package-size.mjs` fails the package if `HL Intelligence.exe` exceeds `120 MiB`.
+- The final release folder is checked to contain exactly one user-facing executable.
+- No auto-update file is present in the staged runtime.
 
 ## Splash Screen
 
@@ -63,7 +67,14 @@ The main window stays hidden until Electron reports `ready-to-show` and the rend
 ```bash
 npm run test
 npm run smoke
+npm run verify:clean
 npm run package:win
+```
+
+For final native Windows QA, use:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/run-final-windows-qa.ps1
 ```
 
 On Windows, verify the outer executable metadata and shell icon:

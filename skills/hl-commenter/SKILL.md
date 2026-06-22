@@ -36,7 +36,7 @@ The anchored Markdown is the primary source. Compact markers look like:
 
 Use those markers to populate finding anchors. Do not output full coordinate data.
 
-Use the visual supplement only for visually dependent pages, charts, scanned content, diagrams, or layout-dependent exhibits. If a finding depends on a visual-only page, use a page-level anchor.
+Use the visual supplement only for visually dependent pages, charts, scanned content, diagrams, text boxes, complex Word tables, columns, Excel dashboards, conditional formatting, merged-cell layouts, PowerPoint charts, images, SmartArt, grouped shapes, complex tables, sparse graphical slides, or layout-dependent exhibits. If a PDF finding depends on a visual-only page, use a page-level anchor. Word findings must use paragraph or table-cell anchors from the Markdown. Excel findings must use cell or range anchors from the Markdown. PowerPoint findings must use shape or slide anchors from the Markdown.
 
 ## Output structure
 
@@ -78,7 +78,7 @@ Supported anchor kinds:
 - `pptx_shape`
 - `pptx_slide`
 
-Only use anchor kinds present in the prepared HL Intelligence files. For the current verified workflow, PDF anchors are expected.
+Only use anchor kinds present in the prepared HL Intelligence files. For Word documents, use `docx_paragraph` for paragraph text and `docx_table_cell` for table-cell text, copying the stable IDs from the nearby `HL:` marker. For Excel workbooks, use `xlsx_cell` for exact cells and `xlsx_range` for tables, named ranges, merged ranges, or range-level findings, copying the sheet name and A1 cell or range from the marked Markdown row. For PowerPoint presentations, use `pptx_shape` for a specific shape and `pptx_slide` only for slide-level visual findings, copying the slide number, slide ID, and shape ID from the marked Markdown section.
 
 ## Style precedence
 

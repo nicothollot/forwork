@@ -9,6 +9,7 @@ export function sanitizeFilenamePart(value: string, fallback = "document"): stri
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
+    .replace(/^[. ]+/g, "")
     .replace(/[. ]+$/g, "");
 
   if (!clean || WINDOWS_RESERVED.test(clean)) return fallback;
@@ -61,6 +62,57 @@ export async function writeFileAtomic(filePath: string, data: string | Uint8Arra
     await rm(tempPath, { force: true }).catch(() => undefined);
     throw error;
   }
+}
+
+export interface StagedOutputFile {
+  finalPath: string;
+  stagingPath: string;
+  commit(): Promise<void>;
+  cleanup(): Promise<void>;
+}
+
+export async function createStagedOutputFile(finalPath: string): Promise<StagedOutputFile> {
+  await ensureDirectory(path.dirname(finalPath));
+  const ext = path.extname(finalPath);
+  const base = path.basename(finalPath, ext);
+  const stagingPath = path.join(path.dirname(finalPath), `.${base}.${process.pid}.${Date.now()}.partial${ext || ".tmp"}`);
+  assertInside(path.dirname(finalPath), stagingPath);
+  return {
+    finalPath,
+    stagingPath,
+    commit: async () => {
+      await rename(stagingPath, finalPath);
+    },
+    cleanup: async () => {
+      await rm(stagingPath, { force: true }).catch(() => undefined);
+    }
+  };
+}
+
+export interface StagedOutputDirectory {
+  finalPath: string;
+  stagingPath: string;
+  commit(): Promise<void>;
+  cleanup(): Promise<void>;
+}
+
+export async function createStagedOutputDirectory(parentFolder: string, requestedName: string): Promise<StagedOutputDirectory> {
+  await ensureDirectory(parentFolder);
+  const finalPath = await ensureUniquePath(path.join(parentFolder, sanitizeFilenamePart(requestedName, "HL_Review")));
+  assertInside(parentFolder, finalPath);
+  const stagingPath = path.join(parentFolder, `.${path.basename(finalPath)}.${process.pid}.${Date.now()}.partial`);
+  assertInside(parentFolder, stagingPath);
+  await ensureDirectory(stagingPath);
+  return {
+    finalPath,
+    stagingPath,
+    commit: async () => {
+      await rename(stagingPath, finalPath);
+    },
+    cleanup: async () => {
+      await rm(stagingPath, { recursive: true, force: true }).catch(() => undefined);
+    }
+  };
 }
 
 export async function readJsonFile<T>(filePath: string): Promise<T> {

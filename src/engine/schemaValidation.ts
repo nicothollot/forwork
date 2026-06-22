@@ -8,12 +8,13 @@ const ajv = new Ajv2020({ allErrors: true, strict: false });
 const validatorCache = new Map<string, any>();
 
 async function readSchema(name: string): Promise<unknown> {
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath ?? "";
   const candidates = [
     path.join(process.cwd(), "src", "schemas", name),
     path.join(process.cwd(), "dist", "schemas", name),
-    path.join(process.resourcesPath ?? "", "app.asar", "dist", "schemas", name),
-    path.join(process.resourcesPath ?? "", "app.asar.unpacked", "dist", "schemas", name),
-    path.join(process.resourcesPath ?? "", "dist", "schemas", name)
+    path.join(resourcesPath, "app.asar", "dist", "schemas", name),
+    path.join(resourcesPath, "app.asar.unpacked", "dist", "schemas", name),
+    path.join(resourcesPath, "dist", "schemas", name)
   ];
 
   for (const candidate of candidates) {

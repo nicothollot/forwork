@@ -22,7 +22,7 @@
       "properties": {
         "filename": { "type": "string", "minLength": 1 },
         "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-        "document_type": { "enum": ["pdf", "docx", "xlsx", "pptx"] },
+        "document_type": { "enum": ["pdf", "docx", "docm", "xlsx", "xlsm", "pptx", "pptm"] },
         "total_pages": { "type": "integer", "minimum": 1 },
         "total_slides": { "type": "integer", "minimum": 1 },
         "total_sheets": { "type": "integer", "minimum": 1 },

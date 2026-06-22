@@ -1,6 +1,6 @@
 # Windows Portable Build Audit
 
-Measured on 2026-06-21 from the local repository in WSL, with the final executable verified on Windows.
+Measured on June 22, 2026 from the local repository in WSL, with selected Windows-side checks run through Windows PowerShell.
 
 ## Baseline
 
@@ -85,6 +85,7 @@ Runtime packaging now uses an explicit allowlist:
 - `package.json`
 - `skills/hl-commenter` as one extra resource
 - `build/hl-intelligence.ico` as one extra resource
+- `resources/office/office-worker.ps1` as one extra resource
 
 Excluded from runtime packaging:
 
@@ -105,14 +106,14 @@ The app still uses `pdfjs-dist`, `pdf-lib`, `jszip`, `ajv`, React, and `lucide-r
 Final portable executable:
 
 - `release/windows-portable/HL Intelligence.exe`
-- `83,495,733` bytes
-- `79.6 MiB`
+- `83,923,544` bytes
+- `80.0 MiB`
 
 Final diagnostic unpacked staging sizes:
 
 - `release/windows-portable-staging/win-unpacked`: `311M`
 - `resources`: `2.9M`
-- `resources/app.asar`: `2,654,704` bytes
+- `resources/app.asar`: `6,251,946` bytes
 
 Largest remaining staged components:
 
@@ -125,7 +126,7 @@ Largest remaining staged components:
 - `vk_swiftshader.dll`: `5,520,384` bytes
 - `d3dcompiler_47.dll`: `4,741,488` bytes
 - `ffmpeg.dll`: `3,057,152` bytes
-- `resources/app.asar`: `2,654,704` bytes
+- `resources/app.asar`: `6,251,946` bytes
 - `dxil.dll`: `1,509,760` bytes
 - `vulkan-1.dll`: `925,696` bytes
 - `v8_context_snapshot.bin`: `721,176` bytes
@@ -136,8 +137,9 @@ The desired `100 MiB` goal was reached. The remaining size floor is mostly Elect
 
 Clean rebuild reproducibility check:
 
-- First optimized clean build: about `79.6 MiB`
-- Second optimized clean build: about `79.6 MiB`
+- First optimized clean build: `83,923,545` bytes (`80.0 MiB`)
+- Second optimized clean build: `83,923,544` bytes (`80.0 MiB`)
+- The second clean build did not include or grow from the first.
 - The final output directory contained exactly one user-facing file: `HL Intelligence.exe`
 - No previous executable or unpacked folder was included in the next build.
 
@@ -204,10 +206,10 @@ Verified icon extraction output:
 \\wsl.localhost\Ubuntu\tmp\hl-intelligence-exe-icon.png
 ```
 
-Windows launch verification also ran the portable executable from a fresh temp folder under both the original filename and a renamed filename. The renamed run produced the rendered main application after extraction:
+Windows launch verification also ran the portable executable from a fresh temp folder whose path contained spaces. The launched app produced a `HL Intelligence` main window, and closing that main window left zero `HL Intelligence` processes:
 
 ```text
-\\wsl.localhost\Ubuntu\tmp\hl-intelligence-portable-renamed.png
+C:\Users\nicot\AppData\Local\Temp\HL Intelligence Fresh Smoke ...
 ```
 
 ## Verification Commands
@@ -227,6 +229,6 @@ Windows-native checks run from WSL through PowerShell:
 powershell.exe -ExecutionPolicy Bypass -File scripts/verify-windows-exe-icon.ps1 -ExePath "release/windows-portable/HL Intelligence.exe" -IconPngPath "\\wsl.localhost\Ubuntu\tmp\hl-intelligence-exe-icon.png"
 ```
 
-The packaged executable was also launched on Windows from a fresh temp directory and screen-captured after startup. The capture showed the rendered main application, not an installer wizard, MSI flow, console, blank window, or partially rendered workspace.
+The packaged executable was also launched on Windows from a fresh temp directory. Automated process-level smoke verified the main window and clean application exit. Direct observation of native splash ordering, Explorer/taskbar/Alt+Tab icons, OS pickers, and Windows display scaling remains part of `docs/final-windows-qa.md`.
 
 Automated test coverage exercised the renderer tabs, file picker bridge calls, folder picker bridge calls, JSON import browse control, PDF engine paths, output generation, schema validation, skill ZIP generation, and smoke build flow. The packaged Windows screenshot pass verified startup and main-window rendering; it did not manually select a real file through an OS modal dialog.
