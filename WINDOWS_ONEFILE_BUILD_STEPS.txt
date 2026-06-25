@@ -36,6 +36,10 @@ Example:
 
   HL_WINDOWS_DOWNLOADS="/mnt/c/Users/YourName/Downloads" npm run package:win
 
+Windows-style paths also work from WSL. The build script converts them automatically:
+
+  HL_WINDOWS_DOWNLOADS="C:\Users\YourName\Downloads" npm run package:win
+
 Output
 ------
 

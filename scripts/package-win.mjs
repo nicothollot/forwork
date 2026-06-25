@@ -55,9 +55,26 @@ console.log(`Artifact size: ${formatMiB(statSync(finalExePath).size)}`);
 
 function resolveFinalOutputDir() {
   if (process.env.HL_WINDOWS_DOWNLOADS) {
-    return path.resolve(process.env.HL_WINDOWS_DOWNLOADS);
+    const normalized = normalizeOutputOverride(process.env.HL_WINDOWS_DOWNLOADS);
+    if (normalized !== process.env.HL_WINDOWS_DOWNLOADS) {
+      console.log(`Converted Windows output path for WSL: ${normalized}`);
+    }
+    return path.resolve(normalized);
   }
   return path.join(root, "release", "windows-portable");
+}
+
+function normalizeOutputOverride(outputDir) {
+  const trimmed = outputDir.trim();
+  if (process.platform !== "win32") {
+    const drivePath = trimmed.match(/^([a-zA-Z]):[\\/](.*)$/);
+    if (drivePath) {
+      const drive = drivePath[1].toLowerCase();
+      const rest = drivePath[2].replace(/\\/g, "/");
+      return path.posix.join("/mnt", drive, rest);
+    }
+  }
+  return trimmed;
 }
 
 function cleanGeneratedOutput() {
