@@ -1,0 +1,30 @@
+HL Intelligence one-file Windows build
+=====================================
+
+After pulling the repo, run these commands from the repository root.
+
+Windows PowerShell:
+
+  npm ci
+  $env:HL_WINDOWS_DOWNLOADS="[replace with destination folder for exe file]"; npm run package:win
+
+WSL / bash:
+
+  npm ci
+  HL_WINDOWS_DOWNLOADS="[replace with destination folder for exe file]" npm run package:win
+
+The command creates one portable Windows executable named:
+
+  HL Intelligence.exe
+
+If HL_WINDOWS_DOWNLOADS is not set, the default output path is:
+
+  release/windows-portable/HL Intelligence.exe
+
+Example Windows PowerShell destination:
+
+  $env:HL_WINDOWS_DOWNLOADS="C:\Users\YourName\Downloads"; npm run package:win
+
+Example WSL destination:
+
+  HL_WINDOWS_DOWNLOADS="/mnt/c/Users/YourName/Downloads" npm run package:win
