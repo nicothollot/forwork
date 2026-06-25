@@ -3,6 +3,19 @@ HL Intelligence one-file Windows build
 
 After pulling the repo, run the commands from the repository root.
 
+Install npm first if needed
+---------------------------
+
+If `npm` is not recognized in PowerShell:
+
+  1. Download the Windows LTS installer from https://nodejs.org/
+  2. Run the installer and keep the default option that installs npm.
+  3. Close and reopen PowerShell.
+  4. Check:
+
+       node --version
+       npm --version
+
 Windows PowerShell
 ------------------
 
